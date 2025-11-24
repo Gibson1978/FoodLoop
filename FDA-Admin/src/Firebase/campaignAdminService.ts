@@ -1,0 +1,45 @@
+// FDA-Admin/src/firebase/campaignAdminService.ts
+import { httpsCallable } from 'firebase/functions';
+import { functions } from './Firebase';
+
+// Define the expected return type
+interface AdminOperationResult {
+  success: boolean;
+  message: string;
+}
+
+export const adminDeleteCampaign = async (campaignId: string): Promise<AdminOperationResult> => {
+  const deleteCampaign = httpsCallable<{ campaignId: string }, AdminOperationResult>(
+    functions, 
+    'adminDeleteCampaign'
+  );
+  const result = await deleteCampaign({ campaignId });
+  return result.data;
+};
+
+export const adminApproveCampaign = async (campaignId: string): Promise<AdminOperationResult> => {
+  const approveCampaign = httpsCallable<{ campaignId: string }, AdminOperationResult>(
+    functions, 
+    'adminApproveCampaign'
+  );
+  const result = await approveCampaign({ campaignId });
+  return result.data;
+};
+
+export const adminRejectCampaign = async (campaignId: string, reason?: string): Promise<AdminOperationResult> => {
+  const rejectCampaign = httpsCallable<{ campaignId: string; reason?: string }, AdminOperationResult>(
+    functions, 
+    'adminRejectCampaign'
+  );
+  const result = await rejectCampaign({ campaignId, reason });
+  return result.data;
+};
+
+export const adminUpdateCampaignStatus = async (campaignId: string, status: string): Promise<AdminOperationResult> => {
+  const updateStatus = httpsCallable<{ campaignId: string; status: string }, AdminOperationResult>(
+    functions, 
+    'adminUpdateCampaignStatus'
+  );
+  const result = await updateStatus({ campaignId, status });
+  return result.data;
+};
