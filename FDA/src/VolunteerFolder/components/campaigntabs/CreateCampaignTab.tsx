@@ -1,11 +1,11 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '../../../UnifiedFolder/ui/button';
 import { Input } from '../../../UnifiedFolder/ui/input';
 import { Label } from '../../../UnifiedFolder/ui/label';
-import { Textarea } from '../../../UnifiedFolder/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../UnifiedFolder/ui/select';
 import { Camera, MapPin, Calendar, Users, Plus, X, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { createCampaign, type CampaignInput } from '../../../Firebase/campaignUsers';
+import { AutoExpandingTextarea } from '../../../UnifiedFolder/ui/AutoExpandingTextarea';
 
 interface CreateCampaignTabProps {
   onNavigateToCampaigns?: () => void;
@@ -20,6 +20,7 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
   const [error, setError] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null); // Added ref for error scrolling
 
   // Form state - UPDATED: Simplified date structure
   const [formData, setFormData] = useState({
@@ -36,6 +37,16 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
   });
 
   const categories = ['Canned Items', 'Packaged Food', 'Mixed Items'];
+
+  // Scroll to top when error occurs
+  useEffect(() => {
+    if (error && errorRef.current) {
+      errorRef.current.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+      });
+    }
+  }, [error]);
 
   // Image upload handler (same as UploadFoodTab)
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,13 +124,29 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
     }));
   };
 
-  // Handle spots input specifically to convert to number
+  // Handle spots input specifically to convert to number and prevent leading zeros
   const handleSpotsChange = (value: string) => {
-    const numValue = parseInt(value) || 0;
+    // Remove any non-digit characters and leading zeros
+    const cleanValue = value.replace(/\D/g, '').replace(/^0+/, '');
+    const numValue = parseInt(cleanValue) || 0;
+    
     setFormData(prev => ({
       ...prev,
       totalSpots: numValue
     }));
+  };
+
+  // Handle time input changes with validation
+  const handleTimeChange = (field: 'startTime' | 'endTime', value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+
+    // Clear time-related errors when user starts typing
+    if (error && (error.includes('time') || error.includes('Time'))) {
+      setError(null);
+    }
   };
 
   // Mobile-optimized form submission with Firebase integration - UPDATED: Simplified validation
@@ -172,9 +199,26 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
       return;
     }
 
-    // Time validation
+    // Time validation - Improved error messages
     if (formData.endTime <= formData.startTime) {
       setError('End time must be after start time');
+      return;
+    }
+
+    // Additional time validation - ensure reasonable duration
+    const [startHour, startMinute] = formData.startTime.split(':').map(Number);
+    const [endHour, endMinute] = formData.endTime.split(':').map(Number);
+    
+    const startTotalMinutes = startHour * 60 + startMinute;
+    const endTotalMinutes = endHour * 60 + endMinute;
+    
+    if (endTotalMinutes - startTotalMinutes < 30) {
+      setError('Campaign duration should be at least 30 minutes');
+      return;
+    }
+
+    if (endTotalMinutes - startTotalMinutes > 12 * 60) {
+      setError('Campaign duration cannot exceed 12 hours');
       return;
     }
 
@@ -248,25 +292,25 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
       <div className="min-h-screen p-4 flex items-center justify-center bg-gradient-to-br from-green-50 to-orange-50">
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg w-full max-w-md text-center p-6 sm:p-8">
           <div className="flex justify-center mb-4 sm:mb-6">
-            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center">
-              <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-500" />
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 rounded-full flex items-center justify-center">
+              <CheckCircle className="h-8 w-8 sm:h-10 sm:w-10 text-green-500" />
             </div>
           </div>
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">Campaign Created Successfully!</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3">Campaign Created!</h2>
           <p className="text-gray-600 text-sm sm:text-base mb-4">
             Your campaign has been submitted and is pending admin approval.
             You'll be notified once it's approved and visible to receivers.
           </p>
-          <div className="bg-green-50 rounded-lg p-3 sm:p-4">
-            <p className="text-xs sm:text-sm text-green-700">
+          <div className="bg-green-50 rounded-lg p-4 mb-6">
+            <p className="text-sm text-green-700">
               ⏳ Currently under review - Thank you for organizing this food distribution!
             </p>
           </div>
           <Button 
-            onClick={onNavigateToCampaigns}
-            className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
+            onClick={() => setIsSubmitted(false)}
+            className="w-full h-12 bg-green-600 hover:bg-green-700 text-white rounded-xl text-base font-semibold shadow-lg transition-all duration-200"
           >
-            View My Campaigns
+            Confirm
           </Button>
         </div>
       </div>
@@ -290,9 +334,9 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
 
       {/* Main content */}
       <div className="p-3 sm:p-4 pb-20"> 
-        {/* Enhanced Error Display */}
+        {/* Enhanced Error Display with ref for scrolling */}
         {error && (
-          <div className="mb-3 sm:mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+          <div ref={errorRef} className="mb-3 sm:mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
             <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-red-700 text-sm font-medium">{error}</p>
@@ -403,7 +447,7 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
               
               <div className="space-y-1 sm:space-y-2">
                 <Label htmlFor="description" className="text-gray-700 text-xs sm:text-sm">Description *</Label>
-                <Textarea
+                <AutoExpandingTextarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
@@ -430,30 +474,32 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
                 </Select>
               </div>
 
-              {/* Total Spots */}
+              {/* Total Spots - FIXED: No leading zeros */}
               <div className="space-y-2">
                 <Label className="text-gray-700 text-xs sm:text-sm">Available Spots *</Label>
                 <div className="grid grid-cols-1 gap-2 sm:gap-3">
                   <Input
                     id="totalSpots"
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     min="1"
-                    value={formData.totalSpots}
+                    value={formData.totalSpots === 0 ? '' : formData.totalSpots}
                     onChange={(e) => handleSpotsChange(e.target.value)}
                     placeholder="e.g., 50"
-                    className="rounded-lg sm:rounded-xl border-gray-200 focus:border-green-400 h-9 sm:h-10 text-xs sm:text-sm"
+                    className="rounded-lg sm:rounded-xl border-gray-200 focus:border-green-400 h-9 sm:h-10 text-xs sm:text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     disabled={isSubmitting}
                   />
                 </div>
                 <div className="flex items-center gap-2 text-[10px] sm:text-xs text-green-600 bg-green-50 p-2 rounded-lg">
                   <Users className="h-3 w-3 flex-shrink-0" />
-                  <span>Maximum receivers that can register: {formData.totalSpots} people</span>
+                  <span>Maximum receivers that can register: {formData.totalSpots || 0} people</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Date & Time - UPDATED: Single date with times */}
+          {/* Date & Time - UPDATED: Single date with times - FIXED: Time validation */}
           <div className="bg-orange-50 rounded-xl sm:rounded-2xl shadow-md p-4 sm:p-6 border border-orange-200">
             <div className="flex items-center gap-2 mb-2 sm:mb-3">
               <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
@@ -478,7 +524,7 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
                 />
               </div>
 
-              {/* Time Range */}
+              {/* Time Range - FIXED: Better time handling */}
               <div className="space-y-2 sm:space-y-3">
                 <Label className="text-gray-700 text-xs sm:text-sm">Campaign Hours *</Label>
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
@@ -488,7 +534,7 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
                       id="startTime"
                       type="time"
                       value={formData.startTime}
-                      onChange={(e) => handleInputChange('startTime', e.target.value)}
+                      onChange={(e) => handleTimeChange('startTime', e.target.value)}
                       className="rounded-lg sm:rounded-xl border-gray-200 focus:border-orange-400 h-9 sm:h-10 text-xs sm:text-sm"
                       disabled={isSubmitting}
                     />
@@ -499,14 +545,14 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
                       id="endTime"
                       type="time"
                       value={formData.endTime}
-                      onChange={(e) => handleInputChange('endTime', e.target.value)}
+                      onChange={(e) => handleTimeChange('endTime', e.target.value)}
                       className="rounded-lg sm:rounded-xl border-gray-200 focus:border-orange-400 h-9 sm:h-10 text-xs sm:text-sm"
                       disabled={isSubmitting}
                     />
                   </div>
                 </div>
                 <p className="text-[10px] sm:text-xs text-gray-500 mt-2">
-                  Receivers can come during these hours on the selected date.
+                  Receivers can come during these hours on the selected date. Duration should be 30 minutes to 12 hours.
                 </p>
               </div>
             </div>
@@ -537,7 +583,7 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
               
               <div className="space-y-1 sm:space-y-2">
                 <Label htmlFor="fullAddress" className="text-gray-700 text-xs sm:text-sm">Full Address</Label>
-                <Textarea
+                <AutoExpandingTextarea
                   id="fullAddress"
                   value={formData.fullAddress}
                   onChange={(e) => handleInputChange('fullAddress', e.target.value)}

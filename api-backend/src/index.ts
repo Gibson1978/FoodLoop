@@ -1,7 +1,13 @@
 // api-backend/src/index.ts
 import * as admin from "firebase-admin";
 
-admin.initializeApp();
+// Initialize Firebase Admin only once
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+// Configure Firestore settings only once
+admin.firestore().settings({ ignoreUndefinedProperties: true });
 
 // Import function groups
 export {deleteUserAccount} from "./admin-user";
@@ -22,8 +28,13 @@ export {campaignStatusManager} from "./campaignStatusManager";
 export {geocodeAddress} from "./geocodeAddress";
 export {updateRatingStats} from "./ratingAggregator";
 export {
-  onFoodListingCompleted,
-  onCampaignCompleted,
+  onFoodListingUpdated,
+  onCampaignUpdated,
   onReservationCompleted,
   onCampaignRegistrationAttended,
 } from "./metricsTrigger"
+export{
+  dailyMetricsRecalculation,
+} from "./dailyMetricRecalculation";
+export { generateTestData } from './generateTestData';
+export { cleanTestData } from './cleanTestData';

@@ -9,7 +9,8 @@ export const foodStatusManager = onSchedule(
   async () => {
     const db = getFirestore();
     const now = new Date();
-    const bufferTime = 30 * 60 * 1000; // 30 minutes buffer
+    const bufferTime = 30 * 60 * 1000; // 30 minutes buffer for pending listings
+    const ratingGracePeriod = 24 * 60 * 60 * 1000; // 24 hours grace period for ratings
 
     // Early return: Skip during low-activity hours (12 AM - 6 AM UTC)
     const hour = now.getUTCHours();
@@ -30,7 +31,7 @@ export const foodStatusManager = onSchedule(
         return new Date(`${dateStr}T${timeStr}:00+08:00`);
       };
 
-      // 1. Handle APPROVED listings - complete if expired/out of stock
+      // 1. Handle APPROVED listings - complete if expired AND grace period has passed
       const approvedQuery = db.collection("foodListings")
         .where("status", "==", "approved");
 
@@ -40,31 +41,33 @@ export const foodStatusManager = onSchedule(
         approvedSnapshot.forEach((doc) => {
           const data = doc.data();
           const endDateTime = createLocalDateTime(data.availableDate, data.endTime);
+          const completionDeadline = new Date(endDateTime.getTime() + ratingGracePeriod);
 
           console.log(`Checking food listing ${doc.id}:`);
           console.log(`- availableDate: ${data.availableDate}`);
           console.log(`- endTime: ${data.endTime}`);
           console.log(`- endDateTime: ${endDateTime.toISOString()}`);
+          console.log(`- completionDeadline: ${completionDeadline.toISOString()}`);
           console.log(`- now: ${now.toISOString()}`);
-          console.log(`- isExpired: ${endDateTime < now}`);
+          console.log(`- isPastDeadline: ${completionDeadline < now}`);
           console.log(`- remainingQuantity: ${data.remainingQuantity}`);
-          console.log(`- shouldComplete: ${endDateTime < now || data.remainingQuantity <= 0}`);
 
-          // Complete if expired or out of stock
-          if (endDateTime < now || data.remainingQuantity <= 0) {
+          // Complete only if past the completion deadline (end time + grace period)
+          // This gives users time to rate after the actual end time
+          if (completionDeadline < now) {
             batch.update(doc.ref, {
               status: "completed",
               updatedAt: new Date(),
             });
             completedCount++;
-            console.log(`Marking food listing ${doc.id} as COMPLETED`);
+            console.log(`Marking food listing ${doc.id} as COMPLETED (past grace period)`);
           }
         });
       } else {
         console.log("Food Status Manager: No approved listings found");
       }
 
-      // 2. Handle PENDING listings - reject if significantly expired
+      // 2. Handle PENDING listings - reject if significantly expired (no grace period for pending)
       const pendingQuery = db.collection("foodListings")
         .where("status", "==", "pending");
 
@@ -75,7 +78,7 @@ export const foodStatusManager = onSchedule(
           const data = doc.data();
           const endDateTime = createLocalDateTime(data.availableDate, data.endTime);
 
-          // Reject if significantly expired (with buffer)
+          // Reject if significantly expired (with buffer) - no grace period for pending
           const isSignificantlyExpired = endDateTime < new Date(now.getTime() - bufferTime);
 
           if (isSignificantlyExpired) {
@@ -100,6 +103,27 @@ export const foodStatusManager = onSchedule(
 
       // Commit changes if any
       await batch.commit();
+
+      if (completedCount > 0) {
+        console.log("🔄 Recalculating metrics for completed food listings...");
+        // Get unique donor IDs from completed listings
+        const donorIds = new Set<string>();
+        approvedSnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.status === "completed") {
+            donorIds.add(data.donorId);
+          }
+        });
+
+        // Recalculate metrics for each donor
+        for (const donorId of donorIds) {
+          try {
+            await calculateDonorMetrics(db, donorId);
+          } catch (error) {
+            console.error(`Error recalculating metrics for donor ${donorId}:`, error);
+          }
+        }
+      }
       console.log(
         `Food Status Manager: Completed ${completedCount} listings, ` +
         `Rejected ${rejectedCount} pending listings`
@@ -109,3 +133,7 @@ export const foodStatusManager = onSchedule(
     }
   }
 );
+
+function calculateDonorMetrics(db: FirebaseFirestore.Firestore, donorId: string) {
+  throw new Error("Function not implemented.");
+}

@@ -14,16 +14,17 @@ import { ListingDetailDialog } from './ListingDetailDialog';
 import { UnifiedCancelDialog } from '../../UnifiedFolder/modals/UnifiedCancelDialog';
 import { toast } from 'sonner';
 import { getUserFoodListings, type FoodListing } from '../../Firebase/foodUsers'; 
-import { ReservationListPage } from '../../UnifiedFolder/modals/ReservationListPage';
 import type { UserData } from '../../Firebase/auth';
 
 interface ListingsTabProps {
   onNavigateToUpload: () => void;
   onNavigateToReservations?: (listingId: string, listingName: string) => void;
   userData?: UserData;
+  autoOpenListingId?: string | null;
+  onAutoOpenComplete?: () => void; 
 }
 
-export function ListingsTab({ onNavigateToUpload,  onNavigateToReservations, userData }: ListingsTabProps) {
+export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, userData, autoOpenListingId, onAutoOpenComplete }: ListingsTabProps) {
   const [selectedListing, setSelectedListing] = useState<FoodListing | null>(null);
   const [itemToCancel, setItemToCancel] = useState<FoodListing | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -32,8 +33,6 @@ export function ListingsTab({ onNavigateToUpload,  onNavigateToReservations, use
   const [completedListings, setCompletedListings] = useState<FoodListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showReservationsDialog, setShowReservationsDialog] = useState(false);
-  const [selectedListingForReservations, setSelectedListingForReservations] = useState<FoodListing | null>(null);
 
   // REAL-TIME: Set up real-time listener for user's food listings
   useEffect(() => {
@@ -66,7 +65,34 @@ export function ListingsTab({ onNavigateToUpload,  onNavigateToReservations, use
     return () => unsubscribe();
   }, []);
 
-  // REMOVED: The old loadUserListings function since we're using real-time now
+  useEffect(() => {
+    if (autoOpenListingId && !loading && !error) {
+      // Wait a tiny bit for the tab to render properly
+      const timer = setTimeout(() => {
+        const listing = activeListings.find(l => l.id === autoOpenListingId) || 
+                       completedListings.find(l => l.id === autoOpenListingId);
+        
+        if (listing) {
+          setSelectedListing(listing);
+          setIsDialogOpen(true);
+        }
+        
+        // Notify parent that we've processed the auto-open
+        if (onAutoOpenComplete) {
+          onAutoOpenComplete();
+        }
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [autoOpenListingId, loading, error, activeListings, completedListings, onAutoOpenComplete]);
+
+  // Remove the old useEffect that used selectedListingId
+
+  // Update dialog handler to not clear autoOpenListingId (parent handles that)
+  const handleDialogOpenChange = (open: boolean) => {
+    setIsDialogOpen(open);
+  };
 
   const handleViewDetails = (listing: FoodListing) => {
     setSelectedListing(listing);
@@ -493,7 +519,7 @@ export function ListingsTab({ onNavigateToUpload,  onNavigateToReservations, use
         <ListingDetailDialog
           listing={selectedListing}
           open={isDialogOpen}
-          onOpenChange={setIsDialogOpen}
+          onOpenChange={handleDialogOpenChange} 
           onCancel={handleCancelFromDialog}
           onUpdate={handleListingUpdated}
         />

@@ -317,8 +317,8 @@ export function CampaignDetailScreen({
                   onClick={() => setCurrentImageIndex(index)}
                   className={`w-2 h-2 rounded-full transition-all ${
                     index === currentImageIndex 
-                      ? 'bg-amber-500 w-6' 
-                      : 'bg-gray-300 hover:bg-gray-400'
+                      ? 'w-8 h-2 bg-amber-500 rounded-full' 
+                      : 'w-2 h-2 bg-amber-300 rounded-full hover:bg-amber-500'
                   }`}
                 />
               ))}
@@ -354,7 +354,7 @@ export function CampaignDetailScreen({
                 </div>
               </div>
 
-              <p className="text-gray-600 leading-relaxed text-sm sm:text-base">
+              <p className="text-gray-600 leading-relaxed text-sm sm:text-base break-words whitespace-pre-wrap">
                 {campaign.description}
               </p>
 
@@ -450,8 +450,8 @@ export function CampaignDetailScreen({
             <div className="flex items-start space-x-2 sm:space-x-3">
               <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm sm:text-base text-gray-900">{campaign.locationName}</p>
-                <p className="text-xs sm:text-sm text-gray-600 truncate">{campaign.fullAddress}</p>
+                <p className="font-semibold text-sm sm:text-base text-gray-900 break-words whitespace-pre-wrap">{campaign.locationName}</p>
+                <p className="text-xs sm:text-sm text-gray-600 truncate break-words whitespace-pre-wrap">{campaign.fullAddress}</p>
               </div>
               <Button 
                 variant="outline" 
@@ -551,7 +551,7 @@ export function CampaignDetailScreen({
           <AlertDialogFooter>
             <AlertDialogAction 
               onClick={() => setShowSuccessDialog(false)}
-              className="bg-green-500 hover:bg-green-600 text-white px-4 sm:px-6 py-2 text-sm sm:text-base"
+              className="bg-red-500 hover:bg-red-600 text-white px-4 sm:px-6 py-2 text-sm sm:text-base"
             >
               Continue
             </AlertDialogAction>

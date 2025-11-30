@@ -1,4 +1,4 @@
-// ReservationListPage.tsx - Improved UI
+// ReservationListPage.tsx - Improved UI with Confirmation Dialog
 import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
@@ -13,6 +13,14 @@ import { Input } from '../ui/input';
 import { toast } from 'sonner';
 import { ReportModal } from './ReportModal';
 import { reportService } from '../../Firebase/userReport';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 
 interface ReservationUser {
   id: string;
@@ -51,6 +59,9 @@ export function ReservationListPage({
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<ReservationUser | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [userToComplete, setUserToComplete] = useState<ReservationUser | null>(null);
+  const [completing, setCompleting] = useState(false);
 
   useEffect(() => {
     if (itemId) {
@@ -115,11 +126,19 @@ export function ReservationListPage({
     }
   };
 
-  const handleComplete = async (userId: string) => {
+  const handleCompleteClick = (user: ReservationUser) => {
+    setUserToComplete(user);
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmComplete = async () => {
+    if (!userToComplete) return;
+
+    setCompleting(true);
     try {
       if (type === 'food') {
         const { completeFoodReservation } = await import('../../Firebase/reservationService');
-        const result = await completeFoodReservation(userId);
+        const result = await completeFoodReservation(userToComplete.id);
         
         if (result.success) {
           toast.success('Reservation marked as completed');
@@ -129,7 +148,7 @@ export function ReservationListPage({
         }
       } else {
         const { completeCampaignRegistration } = await import('../../Firebase/reservationService');
-        const result = await completeCampaignRegistration(userId);
+        const result = await completeCampaignRegistration(userToComplete.id);
         
         if (result.success) {
           toast.success('Registration marked as attended');
@@ -141,7 +160,16 @@ export function ReservationListPage({
     } catch (error) {
       console.error('Error completing:', error);
       toast.error('Failed to complete');
+    } finally {
+      setCompleting(false);
+      setShowConfirmDialog(false);
+      setUserToComplete(null);
     }
+  };
+
+  const handleCancelComplete = () => {
+    setShowConfirmDialog(false);
+    setUserToComplete(null);
   };
 
   const handleReport = (user: ReservationUser) => {
@@ -297,7 +325,7 @@ export function ReservationListPage({
                         (type === 'campaign' && user.status === 'registered')) && (
                         <Button
                           size="sm"
-                          onClick={() => handleComplete(user.id)}
+                          onClick={() => handleCompleteClick(user)}
                           className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700"
                           title={`Mark as ${type === 'food' ? 'completed' : 'attended'}`}
                         >
@@ -324,12 +352,61 @@ export function ReservationListPage({
         </div>
       </div>
 
+      {/* Confirmation Dialog */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Confirm {type === 'food' ? 'Completion' : 'Attendance'}
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to mark{' '}
+              <span className="font-semibold text-gray-900">{userToComplete?.userName}</span>'s{' '}
+              {type === 'food' ? 'reservation as completed?' : 'registration as attended?'}
+              <br />
+              <span className="text-xs text-gray-500 mt-1 block">
+                This action cannot be undone.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={handleCancelComplete}
+              disabled={completing}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmComplete}
+              disabled={completing}
+              className={`flex-1 ${
+                type === 'food' 
+                  ? 'bg-blue-600 hover:bg-blue-700' 
+                  : 'bg-green-600 hover:bg-green-700'
+              }`}
+            >
+              {completing ? (
+                'Processing...'
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  {type === 'food' ? 'Complete Reservation' : 'Mark as Attended'}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Report Modal */}
       {showReportModal && selectedUser && (
         <ReportModal
           open={showReportModal}
           onOpenChange={setShowReportModal}
-          reportType={type === 'food' ? 'food' : 'campaign'}
+          reportType="user"
           targetId={selectedUser.id}
           targetName={selectedUser.userName}
           reportedUser={{

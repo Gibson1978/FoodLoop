@@ -1,9 +1,9 @@
+// CampaignsScreen.tsx - Updated with improved UI and RatingService
 import { useState, useEffect } from "react"; 
 import { Card, CardContent } from "../../../UnifiedFolder/ui/card"; 
 import { Button } from "../../../UnifiedFolder/ui/button"; 
 import { Input } from "../../../UnifiedFolder/ui/input"; 
 import { Badge } from "../../../UnifiedFolder/ui/badge"; 
-import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../../UnifiedFolder/ui/alert-dialog"; 
 import { ImageWithFallback } from "../../../UnifiedFolder/Images/ImageWithFallback"; 
 import { 
   Search, 
@@ -21,14 +21,16 @@ import { getActiveCampaigns, type Campaign } from "../../../Firebase/campaignUse
 import { useLocation } from "../../../UnifiedFolder/LocationFolder/useLocation";
 import { 
   getUserCampaignRegistrations, 
-  completeCampaignRegistration, 
   cancelCampaignRegistration,
   type CampaignRegistration 
 } from "../../../Firebase/reservationService";
+import { usePullToRefresh } from "../../../UnifiedFolder/services/usePullToRefresh";
 import { toast } from "sonner";
+import { RatingDialog } from '../../../UnifiedFolder/modals/RatingDialog';
+import { RatingService, type RatingItem } from '../../../UnifiedFolder/services/ratingServices';
 
 interface CampaignsScreenProps {
-  userRole: 'recipient';
+  userRole: 'receiver';
   onSelectCampaign: (campaignId: string) => void;
 }
 
@@ -38,9 +40,11 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
   const [filteredCampaigns, setFilteredCampaigns] = useState<Campaign[]>([]);
   const [userRegistrations, setUserRegistrations] = useState<CampaignRegistration[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-
+  const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
+  const [currentItemForRating, setCurrentItemForRating] = useState<RatingItem | null>(null);
+  const [userRatings, setUserRatings] = useState<{[key: string]: boolean}>({});
+  
   const { 
     userLocation, 
     isLoading: locationLoading,
@@ -48,6 +52,16 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
     refreshLocation,
     calculateDistance 
   } = useLocation();
+
+  // Theme configuration
+  const theme = {
+    bg: 'bg-amber-50',
+    gradient: 'from-red-500 to-amber-500',
+    accent: 'bg-amber-600 hover:bg-amber-700',
+    accentLight: 'bg-amber-50 text-amber-700',
+    badge: 'bg-amber-500 text-white',
+    text: 'text-amber-600'
+  };
 
   // Load user registrations
   const loadUserRegistrations = async () => {
@@ -82,14 +96,17 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
 
   // Refresh all data including location and registrations
   const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await refreshLocation();
-      await loadUserRegistrations();
-    } finally {
-      setRefreshing(false);
-    }
+    await refreshLocation();
+    await loadUserRegistrations();
   };
+
+  const { 
+    refreshing, 
+    pullDistance, 
+    onTouchStart, 
+    onTouchMove, 
+    onTouchEnd 
+  } = usePullToRefresh(handleRefresh);
 
   // Get user registration for a specific campaign
   const getUserRegistrationForCampaign = (campaignId: string): CampaignRegistration | null => {
@@ -134,22 +151,39 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
     setFilteredCampaigns(filtered);
   }, [campaigns, searchQuery, userLocation, calculateDistance]);
 
-  const handleComplete = async (registrationId: string, event: React.MouseEvent) => {
+  // Load user ratings
+  const loadUserRatings = async () => {
+    const ratings = await RatingService.loadUserRatings(userRegistrations, 'campaign');
+    setUserRatings(ratings);
+  };
+
+  useEffect(() => {
+    if (userRegistrations.length > 0) {
+      loadUserRatings();
+    }
+  }, [userRegistrations]);
+
+  const handleRateAndComplete = async (registrationId: string, item: Campaign, event: React.MouseEvent) => {
     event.stopPropagation();
-    setActionLoading(registrationId);
-    try {
-      const result = await completeCampaignRegistration(registrationId);
-      if (result.success) {
-        toast.success('Registration marked as attended!');
-        await loadUserRegistrations(); // Refresh registrations
-      } else {
-        toast.error(result.error || 'Failed to mark as attended');
-      }
-    } catch (error) {
-      console.error('Error completing registration:', error);
-      toast.error('Failed to mark as attended');
-    } finally {
-      setActionLoading(null);
+    setCurrentItemForRating({
+      id: item.id!,
+      name: item.title,
+      reservationId: registrationId,
+      type: 'campaign'
+    });
+    setRatingDialogOpen(true);
+  };
+
+  const handleRatingSubmit = async (rating: number, comment?: string) => {
+    const result = await RatingService.submitRating(currentItemForRating, rating, comment);
+    
+    if (result.success) {
+      setUserRatings(prev => ({
+        ...prev,
+        [currentItemForRating!.id]: true
+      }));
+    } else {
+      toast.error(result.error || 'Failed to submit rating');
     }
   };
 
@@ -160,7 +194,7 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
       const result = await cancelCampaignRegistration(registrationId);
       if (result.success) {
         toast.success('Registration cancelled successfully');
-        await loadUserRegistrations(); // Refresh registrations
+        await loadUserRegistrations();
       } else {
         toast.error(result.error || 'Failed to cancel registration');
       }
@@ -175,15 +209,6 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
   const getUrgencyColor = (campaign: Campaign) => {
     if (campaign.availableSpots <= 5) return "text-red-600 bg-red-50 border-red-200";
     return "text-green-600 bg-green-50 border-green-200";
-  };
-
-  const getCategoryLabel = (category: string) => {
-    const categoryMap: { [key: string]: string } = {
-      "Fresh Produce": "Fresh Produce",
-      "Shelf Stable": "Shelf Stable", 
-      "Cooked Meals": "Cooked Meals"
-    };
-    return categoryMap[category] || category;
   };
 
   const getDistanceBadge = (campaign: Campaign) => {
@@ -204,51 +229,52 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
 
   const getRegistrationStatus = (campaignId: string) => {
     const registration = getUserRegistrationForCampaign(campaignId);
-    if (!registration) return null;
+    return RatingService.getRatingStatus(registration, userRatings, 'campaign');
+  };
 
-    const statusConfig = {
-      registered: { color: 'bg-blue-100 text-blue-800', text: 'Registered' },
-      attended: { color: 'bg-green-100 text-green-800', text: 'Ready to Rate' },
-      cancelled: { color: 'bg-gray-100 text-gray-800', text: 'Cancelled' }
-    };
-
-    return statusConfig[registration.status as keyof typeof statusConfig];
+  const isInGracePeriod = (item: Campaign): boolean => {
+    return RatingService.isInGracePeriod(item.campaignDate, item.endTime);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background pb-20 bg-amber-50 flex items-center justify-center">
+      <div className={`min-h-screen bg-background pb-20 ${theme.bg} flex items-center justify-center`}>
         <div className="text-center text-gray-600">Loading campaigns...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20 bg-amber-50">
+    <div 
+      className={`min-h-screen pb-20 ${theme.bg}`}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Pull to refresh indicator */}
+      {refreshing && (
+        <div className="fixed top-0 left-0 right-0 flex justify-center pt-4 z-50">
+          <div className="bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg flex items-center gap-2">
+            <RefreshCw className={`w-4 h-4 animate-spin ${theme.text}`} />
+            <span className={`text-sm ${theme.text}`}>Refreshing...</span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="bg-gradient-to-r from-red-500 to-amber-500 px-4 sm:px-6 pt-6 pb-6 flex flex-col justify-center min-h-[150px] sm:min-h-[150px] rounded-b-lg text-white">
+      <div className={`bg-gradient-to-r ${theme.gradient} px-4 sm:px-6 pt-6 pb-6 flex flex-col justify-center min-h-[150px] sm:min-h-[150px] rounded-b-lg text-white`}>
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-white">Food Distribution Events</h1>
-            <p className="mt-1 text-sm sm:text-base">Register your spot for community food distributions</p>
+            <p className="mt-1 text-sm sm:text-base">Find community food distributions near you</p>
           </div>
-          <Button
-            onClick={handleRefresh}
-            disabled={refreshing || locationLoading}
-            variant="ghost"
-            size="sm"
-            className="text-white hover:bg-white/20"
-          >
-            <RefreshCw className={`w-4 h-4 mr-1 ${refreshing || locationLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
         </div>
         
         {/* Search Bar */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 sm:w-5 sm:h-5 text-muted-foreground" />
           <Input
-            placeholder="Search for food distributions..."
+            placeholder="Search for food distribution events..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 h-12 sm:h-12 bg-white rounded-xl border-0 text-foreground text-sm sm:text-base"
@@ -283,11 +309,11 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
         {/* Location-based Filter Info */}
         {userLocation && (
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs text-green-600">
+            <div className={`flex items-center gap-2 text-xs ${theme.text}`}>
               <MapPin className="w-4 h-4" />
               <span>Campaigns sorted by distance from your location</span>
             </div>
-            <Badge variant="secondary" className="text-xs text-white bg-amber-500">
+            <Badge variant="secondary" className={`text-xs text-white ${theme.badge}`}>
               Sorted by Distance
             </Badge>
           </div>
@@ -299,79 +325,139 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
             const distanceBadge = getDistanceBadge(campaign);
             const userRegistration = getUserRegistrationForCampaign(campaign.id!);
             const registrationStatus = getRegistrationStatus(campaign.id!);
+            const isGracePeriod = isInGracePeriod(campaign);
+            const isRated = userRatings[campaign.id!];
+            const isAttended = userRegistration?.status === 'attended';
+            const isDisabled = isRated || (isAttended && !isGracePeriod);
+            const isFullyBooked = campaign.availableSpots <= 0 && !userRegistration;
 
             return (
               <Card 
                 key={campaign.id}
-                className={`shadow-sm border border-border cursor-pointer transition-all duration-200 hover:shadow-md ${
-                  campaign.availableSpots <= 0 && !userRegistration ? 'opacity-60' : ''
+                className={`shadow-sm border border-border transition-all duration-200 hover:shadow-md relative ${
+                  // Only gray out if rated OR (attended AND not in grace period)
+                  (isRated || (isAttended && !isGracePeriod))
+                    ? 'opacity-60 cursor-not-allowed bg-gray-50' 
+                    : 'cursor-pointer'
                 }`}
-                onClick={() => campaign.availableSpots > 0 && !userRegistration && onSelectCampaign(campaign.id!)}
+                onClick={() => {
+                  // Only allow clicking if not grayed out AND not fully booked AND no active registration
+                  if (isRated || (isAttended && !isGracePeriod)) return;
+                  if (!isFullyBooked && !userRegistration) {
+                    onSelectCampaign(campaign.id!);
+                  }
+                }}
               >
+                {/* Big Rated Overlay - Centered and Prominent */}
+                {isRated && (
+                  <div className="absolute inset-0 bg-black/10 rounded-lg flex items-center justify-center z-20">
+                    <div className="bg-white/95 rounded-xl px-6 py-4 flex items-center gap-3 shadow-lg border">
+                      <CheckCircle2 className="w-8 h-8 text-green-600" />
+                      <span className="text-xl font-bold text-green-700">Rated</span>
+                    </div>
+                  </div>
+                )}
+
                 <CardContent className="p-0">
                   <div className="flex flex-col">
-                    {/* Image in its own rounded container */}
+                    {/* Image with Status Badges */}
                     <div className="relative m-3 sm:m-4 mb-0">
-                      <div className="w-full h-32 sm:h-40 rounded-xl overflow-hidden">
+                      <div className={`w-full h-32 sm:h-40 rounded-xl overflow-hidden ${
+                        isDisabled ? 'grayscale' : ''
+                      }`}>
                         <ImageWithFallback
                           src={campaign.images?.[0] || '/placeholder-campaign.jpg'}
                           alt={campaign.title}
                           className="w-full h-full object-cover"
                         />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                       </div>
-                      {campaign.availableSpots <= 0 && !userRegistration && (
-                        <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
-                          <span className="text-white text-xs sm:text-sm font-medium px-2 py-1 sm:px-3 sm:py-2 bg-black/70 rounded-lg">Fully Booked</span>
+                      
+                      {/* Status Overlays */}
+                      {isFullyBooked && (
+                        <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center z-10">
+                          <span className="text-white text-sm font-medium px-3 py-2 bg-black/70 rounded-lg">
+                            Fully Booked
+                          </span>
                         </div>
                       )}
+                    </div>
+
+                    {/* Status Badges - Top Right of Entire Card */}
+                    <div className="absolute top-4 right-4 flex flex-col gap-1 z-20">
                       {registrationStatus && (
-                        <div className="absolute top-2 right-2">
-                          <Badge className={registrationStatus.color}>
-                            {registrationStatus.text}
-                          </Badge>
-                        </div>
+                        <Badge className={`${registrationStatus.color} text-xs font-medium h-8 px-3 flex items-center`}>
+                          {registrationStatus.text}
+                        </Badge>
+                      )}
+                      {isGracePeriod && !isRated && (
+                        <Badge className="bg-purple-100 text-purple-800 text-xs font-medium h-8 px-3 flex items-center">
+                          <Clock className="w-3 h-3 mr-1" />
+                          Rating Period
+                        </Badge>
                       )}
                     </div>
                     
                     {/* Content below image */}
                     <div className="p-3 sm:p-4 space-y-3">
-                      {/* 1. Title and Rating */}
-                      <div className="flex items-start justify-between">
+                      {/* Title and Rating on same line */}
+                      <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-foreground text-base sm:text-lg leading-tight pr-2">
+                          <h3 className={`font-semibold text-base sm:text-lg leading-tight ${
+                            isDisabled ? 'text-gray-500' : 'text-foreground'
+                          }`}>
                             {campaign.title}
                           </h3>
-                          <div className="flex items-center mt-1 text-sm sm:text-base text-amber-600 font-medium">
-                            <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                            {campaign.availableSpots} spots left
-                          </div>
                         </div>
-                        <div className="flex items-center text-xs sm:text-sm text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
-                          <Star className="w-3 h-3 sm:w-4 sm:h-4 mr-1 fill-current text-yellow-500" />
+                        {/* Rating moved to be beside title */}
+                        <div className={`flex items-center text-sm whitespace-nowrap flex-shrink-0 ${
+                          isDisabled ? 'text-gray-400' : 'text-muted-foreground'
+                        }`}>
+                          <Star className="w-4 h-4 mr-1 fill-current text-yellow-500" />
                           {campaign.rating?.toFixed(1) || 'New'}
                         </div>
                       </div>
 
-                      {/* 2. Category, Distance, and Organizer */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className="text-xs sm:text-sm px-2 sm:px-3 py-1 bg-blue-50 text-blue-700 border-blue-200">
-                          {getCategoryLabel(campaign.category)}
+                      {/* Spots and Category */}
+                      <div className="flex items-center gap-3">
+                        <div className={`flex items-center text-sm font-medium ${
+                          isDisabled ? 'text-gray-400' : 'text-amber-600'
+                        }`}>
+                          <Users className="w-4 h-4 mr-2" />
+                          {campaign.availableSpots} spots left
+                        </div>
+                        <Badge variant="outline" className={`text-xs px-2 py-1 ${
+                          isDisabled 
+                            ? 'bg-gray-100 text-gray-500 border-gray-200' 
+                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                          {campaign.category}
                         </Badge>
+                      </div>
+
+                      {/* Distance and Organizer */}
+                      <div className="flex flex-wrap items-center gap-2">
                         {distanceBadge}
-                        <Badge variant="secondary" className="text-xs sm:text-sm px-2 py-1 bg-gray-100">
+                        <Badge variant="secondary" className={`text-xs px-2 py-1 ${
+                          isDisabled ? 'bg-gray-100 text-gray-400' : 'bg-gray-100'
+                        }`}>
                           By {campaign.organizerName}
                         </Badge>
                       </div>
 
-                      {/* 3. Event Date and Time */}
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                      {/* Event Date and Time */}
+                      <div className={`flex items-center gap-4 text-xs ${
+                        isDisabled ? 'text-gray-400' : 'text-gray-500'
+                      }`}>
                         <div className="flex items-center gap-1">
                           <Calendar className="h-3 w-3 flex-shrink-0" />
-                          <span>{new Date(campaign.campaignDate).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}</span>
+                          <span>
+                            {new Date(campaign.campaignDate).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3 flex-shrink-0" />
@@ -379,18 +465,22 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
                         </div>
                       </div>
 
-                      {/* 4. Location */}
-                      <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
-                        <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-2 sm:mr-3 flex-shrink-0" />
-                        <span className="truncate">
+                      {/* Location */}
+                      <div className={`flex items-start text-xs sm:text-sm ${
+                        isDisabled ? 'text-gray-400' : 'text-muted-foreground'
+                      }`}>
+                        <MapPin className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
+                        <span className="break-words whitespace-pre-wrap flex-1 min-w-0">
                           {campaign.locationName}
                         </span>
                       </div>
 
-                      {/* 5. Description Snippet */}
+                      {/* Description */}
                       {campaign.description && (
-                        <div className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                          <p className="line-clamp-2">
+                        <div className={`text-xs sm:text-sm leading-relaxed ${
+                          isDisabled ? 'text-gray-400' : 'text-gray-600'
+                        }`}>
+                          <p className="line-clamp-2 break-words whitespace-pre-wrap">
                             {campaign.description.length > 120 
                               ? campaign.description.substring(0, 120) + '...' 
                               : campaign.description
@@ -399,51 +489,67 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
                         </div>
                       )}
                       
-                      {/* 6. Footer with urgency and action buttons */}
+                      {/* Footer with urgency and action buttons */}
                       <div className="flex items-center justify-between pt-2">
                         <Badge 
                           variant="outline" 
-                          className={`text-xs sm:text-sm px-2 sm:px-3 py-1 border ${getUrgencyColor(campaign)}`}
+                          className={`text-xs px-3 py-1 border ${
+                            isDisabled 
+                              ? 'bg-gray-100 text-gray-400 border-gray-200' 
+                              : getUrgencyColor(campaign)
+                          }`}
                         >
-                          <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                          {campaign.availableSpots <= 5 ? 'Few spots left' : 'Spots available'}
+                          <Clock className="w-3 h-3 mr-1" />
+                          {isGracePeriod ? 'Ended - Rating Period' : 
+                          campaign.availableSpots <= 5 ? 'Few spots left' : 'Spots available'}
                         </Badge>
 
                         {/* Action Buttons */}
                         {userRegistration && (
-                          <div className="flex gap-2">
-                            {/* Complete/Rate Button - Only enabled when status is attended */}
+                        <div className="flex gap-2">
+                          {/* Rate Button */}
+                          {userRegistration.status === 'attended' && (
                             <Button
                               size="sm"
-                              onClick={(e) => handleComplete(userRegistration.id!, e)}
-                              disabled={userRegistration.status !== 'attended' || actionLoading === userRegistration.id}
+                              onClick={(e) => !isRated && handleRateAndComplete(userRegistration.id!, campaign, e)}
+                              disabled={isRated || actionLoading === userRegistration.id}
                               className={`h-8 px-3 text-xs ${
-                                userRegistration.status === 'attended' 
-                                  ? 'bg-green-600 hover:bg-green-700 text-white' 
-                                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                isRated
+                                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                  : 'border-green-700 bg-green-600 text-white'
                               }`}
                             >
-                              <CheckCircle2 className="w-3 h-3 mr-1" />
-                              {userRegistration.status === 'attended' ? 'Rate & Complete' : 'Complete'}
+                              {isRated ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                                  Rated
+                                </>
+                              ) : (
+                                <>
+                                  <Star className="w-3 h-3 mr-1" />
+                                  Rate
+                                </>
+                              )}
                             </Button>
-                            
-                            {/* Cancel Button - Only enabled when status is registered */}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => handleCancel(userRegistration.id!, e)}
-                              disabled={userRegistration.status !== 'registered' || actionLoading === userRegistration.id}
-                              className={`h-8 px-3 text-xs ${
-                                userRegistration.status === 'registered'
-                                  ? 'border-red-200 text-red-600 hover:bg-red-50'
-                                  : 'border-gray-200 text-gray-400 cursor-not-allowed'
-                              }`}
-                            >
-                              <XCircle className="w-3 h-3 mr-1" />
-                              Cancel
-                            </Button>
-                          </div>
-                        )}
+                          )}
+                          
+                          {/* Cancel Button */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => handleCancel(userRegistration.id!, e)}
+                            disabled={userRegistration.status !== 'registered' || actionLoading === userRegistration.id || isRated}
+                            className={`h-8 px-3 text-xs ${
+                              userRegistration.status === 'registered' && !isRated
+                                ? 'border-red-200 text-red-600 hover:bg-red-50'
+                                : 'border-gray-200 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            <XCircle className="w-3 h-3 mr-1" />
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
                       </div>
                     </div>
                   </div>
@@ -474,6 +580,16 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
           </div>
         )}
       </div>
+
+      <RatingDialog
+        userType={"receiver"}
+        open={ratingDialogOpen}
+        onOpenChange={setRatingDialogOpen}
+        type="campaign"
+        itemId={currentItemForRating?.id || ''}
+        itemName={currentItemForRating?.name || ''}
+        onRated={handleRatingSubmit}       
+      />
     </div>
   );
 }

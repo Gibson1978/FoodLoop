@@ -27,7 +27,7 @@ export interface FilterOptions {
   timeOptions: string[];
   rating: number;
   dietaryNeeds: string[];
-  reserved: boolean | null;
+  reserved: 'all' | 'my' | 'available' | 'completed' | null;
   quantity: number;
 }
 
@@ -117,7 +117,7 @@ export function AdvancedFilterBar({ onFilterChange, variant = "receiver" }: Adva
   const [expandedFilter, setExpandedFilter] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterOptions>({
     foodTypes: [],
-    distance: 10,
+    distance: 50,
     donorTypes: [],
     timeOptions: [],
     rating: 0,
@@ -196,11 +196,13 @@ export function AdvancedFilterBar({ onFilterChange, variant = "receiver" }: Adva
   const handleReservedToggle = () => {
     const newFilters = { ...filters };
     
-    // Cycle through states: null -> true -> false -> null
+    // Cycle through states: null -> 'my' -> 'available' -> 'completed' -> null
     if (newFilters.reserved === null) {
-      newFilters.reserved = true;
-    } else if (newFilters.reserved === true) {
-      newFilters.reserved = false;
+      newFilters.reserved = 'my';
+    } else if (newFilters.reserved === 'my') {
+      newFilters.reserved = 'available';
+    } else if (newFilters.reserved === 'available') {
+      newFilters.reserved = 'completed';
     } else {
       newFilters.reserved = null;
     }
@@ -220,7 +222,7 @@ export function AdvancedFilterBar({ onFilterChange, variant = "receiver" }: Adva
       case "rating":
         return filters.rating > 0 ? 1 : 0;
       case "distance":
-        return filters.distance > 5 ? 1 : 0; // Changed to show active when > 5km
+        return filters.distance < 50 ? 1 : 0;
       case "reserved":
         return filters.reserved !== null ? 1 : 0;
       case "quantity":
@@ -230,15 +232,19 @@ export function AdvancedFilterBar({ onFilterChange, variant = "receiver" }: Adva
     }
   };
 
+  // Update getReservedLabel function
   const getReservedLabel = (): string => {
-    if (filters.reserved === true) return "Reserved";
-    if (filters.reserved === false) return "Available";
+    if (filters.reserved === 'my') return "My Reservations";
+    if (filters.reserved === 'available') return "Available";
+    if (filters.reserved === 'completed') return "Completed";
     return "Reserved";
   };
 
+  // Update getReservedIconColor function
   const getReservedIconColor = (): string => {
-    if (filters.reserved === true) return "text-blue-500";
-    if (filters.reserved === false) return "text-green-500";
+    if (filters.reserved === 'my') return "text-blue-500";
+    if (filters.reserved === 'available') return "text-green-500";
+    if (filters.reserved === 'completed') return "text-purple-500";
     return "text-muted-foreground";
   };
 
@@ -378,31 +384,36 @@ export function AdvancedFilterBar({ onFilterChange, variant = "receiver" }: Adva
 
               {/* Distance Filter - Updated Range */}
               {expandedFilter === "distance" && (
-                <div>
-                  <h3 className="text-sm font-semibold mb-3 text-center">Distance Range</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-xs text-gray-600 px-1">
-                      <span>5 km</span>
-                      <span className={`${currentColors.text} font-semibold`}>{filters.distance} km</span>
-                      <span>50 km</span>
-                    </div>
-                    <div className="px-2 ">
-                      <Slider
-                        value={[filters.distance]}
-                        onValueChange={handleDistanceChange}
-                        min={5}
-                        max={50}
-                        step={1}
-                        variant={variant}
-                        className="w-full"
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 text-center">
-                      Within <span className={`${currentColors.text} font-semibold`}>{filters.distance} km</span>
-                    </p>
+              <div>
+                <h3 className="text-sm font-semibold mb-3 text-center">Distance Range</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs text-gray-600 px-1">
+                    <span>5 km</span>
+                    <span className={`${currentColors.text} font-semibold`}>
+                      {filters.distance === 50 ? 'All' : `${filters.distance} km`}
+                    </span>
+                    <span>50 km</span>
                   </div>
+                  <div className="px-2">
+                    <Slider
+                      value={[filters.distance]}
+                      onValueChange={handleDistanceChange}
+                      min={5}
+                      max={50}
+                      step={5}
+                      variant={variant}
+                      className="w-full"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 text-center">
+                    {filters.distance === 50 
+                      ? 'Showing all distances' 
+                      : `Within ${filters.distance} km`
+                    }
+                  </p>
                 </div>
-              )}
+              </div>
+            )}
 
               {/* Donor Type Filter */}
               {expandedFilter === "donor-type" && (

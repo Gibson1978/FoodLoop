@@ -10,9 +10,10 @@ import { UserMetricsService, type UserMetrics } from '../../UnifiedFolder/servic
 
 interface DashboardTabProps {
   onNavigateToUpload: () => void;
+  onNavigateToListingDetail: (listingId: string) => void;
 }
 
-export function DashboardTab({ onNavigateToUpload }: DashboardTabProps) {
+export function DashboardTab({ onNavigateToUpload, onNavigateToListingDetail }: DashboardTabProps) {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [userMetrics, setUserMetrics] = useState<UserMetrics | null>(null);
   const [activeListings, setActiveListings] = useState<FoodListing[]>([]);
@@ -125,6 +126,12 @@ export function DashboardTab({ onNavigateToUpload }: DashboardTabProps) {
         return 'Completed';
       default:
         return status;
+    }
+  };
+
+  const handleListingClick = (listing: FoodListing) => {
+    if (listing.id) {
+      onNavigateToListingDetail(listing.id);
     }
   };
 
@@ -246,7 +253,10 @@ export function DashboardTab({ onNavigateToUpload }: DashboardTabProps) {
           ) : (
             <div className="space-y-3 sm:space-y-4 sm:p-2">
               {activeListings.map((listing) => (
-                <div key={listing.id} className="bg-gray-50 rounded-lg sm:rounded-xl p-3 sm:p-4 hover:shadow-md transition-shadow cursor-pointer">
+                <div 
+                  key={listing.id} 
+                  className="bg-gray-50 rounded-lg sm:rounded-xl p-3 sm:p-4 hover:shadow-md transition-shadow cursor-pointer" 
+                  onClick={() => handleListingClick(listing)}>
                   <div className="flex gap-3 sm:gap-4">
                     {/* Food Listing Image */}
                     <div className="flex-shrink-0">

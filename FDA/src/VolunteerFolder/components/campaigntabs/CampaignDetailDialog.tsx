@@ -319,7 +319,9 @@ export function CampaignDetailDialog({ campaign, open, onOpenChange, onCancel, o
                 placeholder="Describe the campaign..."
               />
             ) : (
-              <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">{campaign.description}</p>
+              <p className="text-xs sm:text-sm text-gray-600 leading-relaxed break-all whitespace-pre-wrap max-w-full overflow-hidden">
+                {campaign.description}
+              </p>
             )}
           </div>
 
@@ -454,8 +456,12 @@ export function CampaignDetailDialog({ campaign, open, onOpenChange, onCancel, o
                 </>
               ) : (
                 <>
-                  <p className="text-xs sm:text-sm text-gray-600 font-medium">{campaign.locationName}</p>
-                  <p className="text-xs sm:text-sm text-gray-600 break-words">{campaign.fullAddress}</p>
+                  <p className="text-xs sm:text-sm text-gray-600 font-medium break-all whitespace-pre-wrap max-w-full overflow-hidden">
+                    {campaign.locationName}
+                  </p>
+                  <p className="text-xs sm:text-sm text-gray-600 break-all whitespace-pre-wrap max-w-full overflow-hidden">
+                    {campaign.fullAddress}
+                  </p>
                 </>
               )}
             </div>

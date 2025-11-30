@@ -21,11 +21,11 @@ module.exports = {
     "@typescript-eslint",
   ],
   rules: {
-    "quotes": ["error", "double"],
-    "max-len": ["error",{"code": 200}],
+    "quotes": "off", // Disable quote enforcement
+    "max-len": ["error", {"code": 300}],
     "linebreak-style": "off",
-    "object-curly-spacing": ["error", "never"],
-    "comma-dangle": ["error", "always-multiline"],
-    "no-trailing-spaces": "error",
+    "object-curly-spacing": "off", // Disable object curly spacing enforcement
+    "comma-dangle": "off", // Disable comma dangle enforcement
+    "no-trailing-spaces": "off", // Disable trailing spaces enforcement
   },
 };

@@ -4,8 +4,8 @@ import { Button } from "../UnifiedFolder/ui/button";
 import { Tabs, TabsContent } from "../UnifiedFolder/ui/tabs";
 
 import { HomeScreen } from "./components/DashboardTab";
-import { FoodBrowseScreen } from "./components/foodtabs/FoodBrowseScreen";
-import { FoodDetailScreen } from "./components/foodtabs/FoodDetailScreen";
+import { FoodBrowseScreen } from "../UnifiedFolder/modals/FoodBrowseScreen"; 
+import { FoodDetailScreen } from "../UnifiedFolder/modals/FoodDetailScreen";
 import { CampaignsScreen } from "./components/campaigns/CampaignsScreen";
 import { CampaignDetailScreen } from "./components/campaigns/CampaignDetailScreen";
 import { ProfileTab } from "../UnifiedFolder/profile/ProfileTab";
@@ -83,13 +83,24 @@ export default function Receiver({ onLogout, userData }: ReceiverProps) {
   const handleReportClose = () => setReportModal(null);
 
   // Handle bottom navigation - close any detail views and go to selected tab
-  const handleBottomNavClick = (tab: string) => {
+    const handleBottomNavClick = (tab: string) => {
     // Close any open detail screens
     setSelectedFoodId(null);
     setSelectedCampaignId(null);
     setMapLocation(null);
     
     // Navigate to the selected tab
+    setActiveTab(tab);
+  };
+
+  const handleNavigate = (tab: string, itemId?: string) => {
+    if (itemId) {
+      if (tab === 'browse') {
+        setSelectedFoodId(itemId);
+      } else if (tab === 'campaigns') {
+        setSelectedCampaignId(itemId);
+      }
+    }
     setActiveTab(tab);
   };
 
@@ -114,13 +125,14 @@ export default function Receiver({ onLogout, userData }: ReceiverProps) {
 
   // Conditional content for detail/map/report views
   const renderContent = () => {
-
     if (selectedFoodId) {
       return (
         <FoodDetailScreen
           foodId={selectedFoodId}
           onBack={handleBackFromDetail}
-          onReport={handleReport}     />
+          onReport={handleReport}
+          userRole="receiver" // Add this prop
+        />
       );
     }
 
@@ -139,16 +151,20 @@ export default function Receiver({ onLogout, userData }: ReceiverProps) {
     return (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsContent value="home" className="m-0">
-          <HomeScreen onNavigate={setActiveTab} />
+          <HomeScreen onNavigate={handleNavigate} />
         </TabsContent>
 
         <TabsContent value="browse" className="m-0">
-          <FoodBrowseScreen onSelectFood={handleSelectFood} />
+          {/* Updated: Pass userRole="receiver" to the unified FoodBrowseScreen */}
+          <FoodBrowseScreen 
+            onSelectFood={handleSelectFood} 
+            userRole="receiver"
+          />
         </TabsContent>
 
         <TabsContent value="campaigns" className="m-0">
           <CampaignsScreen
-            userRole="recipient"
+            userRole="receiver"
             onSelectCampaign={handleSelectCampaign}
           />
         </TabsContent>

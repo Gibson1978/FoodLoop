@@ -1,4 +1,4 @@
-// ReportModal.tsx - Updated with open/onOpenChange props
+// ReportModal.tsx - Updated with low severity reasons and better severity card styling
 import { useState, useRef } from "react";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
@@ -18,24 +18,32 @@ import {
   Upload,
   File,
   Image,
-  Trash2
+  Trash2,
+  Shield
 } from "lucide-react";
 import { uploadReportEvidence } from "../../Firebase/firebase-storage";
 
 interface ReportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  reportType: 'food' | 'volunteer' | 'campaign';
+  reportType: 'food' | 'volunteer' | 'campaign' | 'user';
   targetId: string;
   targetName: string;
   reportedUser?: {
     id: string;
     name: string;
     email: string;
-    type: 'donor' | 'volunteer' | 'receiver';
+    type: 'donor' | 'volunteer' | 'receiver' | 'organizer';
   };
   onClose: () => void;
   onSubmit: (reportData: any) => void;
+}
+
+interface ReportReason {
+  value: string;
+  label: string;
+  severity: 'low' | 'medium' | 'high';
+  description: string;
 }
 
 export function ReportModal({ 
@@ -51,8 +59,7 @@ export function ReportModal({
   const [formData, setFormData] = useState({
     reason: "",
     description: "",
-    severity: "",
-    evidence: ""
+    severity: "medium" as 'low' | 'medium' | 'high'
   });
 
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
@@ -68,29 +75,165 @@ export function ReportModal({
     type: 'donor' as const
   };
 
-  const getFoodReasons = () => [
-    { value: "expired", label: "Food appears expired or spoiled" },
-    { value: "hygiene", label: "Poor hygiene or food safety concerns" },
-    { value: "misleading", label: "Misleading description or photos" },
-    { value: "unavailable", label: "Food not available as advertised" },
-    { value: "location", label: "Incorrect pickup location" },
-    { value: "inappropriate", label: "Inappropriate content or behavior" },
-    { value: "fraud", label: "Suspected fraud or scam" },
-    { value: "other", label: "Other concern" }
+  // Food Report Reasons with Severity - Added low severity reasons
+  const getFoodReasons = (): ReportReason[] => [
+    { 
+      value: "expired", 
+      label: "Food appears expired or spoiled", 
+      severity: "high", 
+      description: "Potential health risk" 
+    },
+    { 
+      value: "hygiene", 
+      label: "Poor hygiene or food safety concerns", 
+      severity: "high", 
+      description: "Unsanitary handling or storage" 
+    },
+    { 
+      value: "misleading", 
+      label: "Misleading description or photos", 
+      severity: "low", 
+      description: "Minor inaccuracies in representation" 
+    },
+    { 
+      value: "unavailable", 
+      label: "Food not available as advertised", 
+      severity: "medium", 
+      description: "Item not as described" 
+    },
+    { 
+      value: "location", 
+      label: "Incorrect pickup location", 
+      severity: "low", 
+      description: "Minor address discrepancy" 
+    },
+    { 
+      value: "inappropriate", 
+      label: "Inappropriate content or behavior", 
+      severity: "high", 
+      description: "Offensive or unsafe conduct" 
+    },
+    { 
+      value: "fraud", 
+      label: "Suspected fraud or scam", 
+      severity: "high", 
+      description: "Financial misconduct" 
+    },
+    { 
+      value: "other", 
+      label: "Other concern", 
+      severity: "medium", 
+      description: "Additional issues not listed" 
+    }
   ];
 
-  const getCampaignReasons = () => [
-    { value: "misleading", label: "Misleading information" },
-    { value: "no_show", label: "Organizer didn't show up" },
-    { value: "unprofessional", label: "Unprofessional behavior" },
-    { value: "safety", label: "Safety concerns or violations" },
-    { value: "harassment", label: "Harassment or inappropriate conduct" },
-    { value: "location", label: "Incorrect location" },
-    { value: "fraud", label: "Suspected fraud or scam" },
-    { value: "other", label: "Other concern" }
+  // Campaign Report Reasons with Severity - Added low severity reasons
+  const getCampaignReasons = (): ReportReason[] => [
+    { 
+      value: "misleading", 
+      label: "Misleading information", 
+      severity: "low", 
+      description: "Minor inaccuracies in event details" 
+    },
+    { 
+      value: "no_show", 
+      label: "Organizer didn't show up", 
+      severity: "high", 
+      description: "Event cancellation without notice" 
+    },
+    { 
+      value: "unprofessional", 
+      label: "Unprofessional behavior", 
+      severity: "low", 
+      description: "Minor organizational issues" 
+    },
+    { 
+      value: "safety", 
+      label: "Safety concerns or violations", 
+      severity: "high", 
+      description: "Unsafe environment or practices" 
+    },
+    { 
+      value: "harassment", 
+      label: "Harassment or inappropriate conduct", 
+      severity: "high", 
+      description: "Abusive or threatening behavior" 
+    },
+    { 
+      value: "location", 
+      label: "Incorrect location", 
+      severity: "low", 
+      description: "Minor venue issues" 
+    },
+    { 
+      value: "fraud", 
+      label: "Suspected fraud or scam", 
+      severity: "high", 
+      description: "Financial misconduct" 
+    },
+    { 
+      value: "other", 
+      label: "Other concern", 
+      severity: "medium", 
+      description: "Additional issues not listed" 
+    }
   ];
 
-  const reasons = reportType === 'food' ? getFoodReasons() : getCampaignReasons();
+  // User Report Reasons with Severity (for reporting receivers/volunteers) - Added low severity reasons
+  const getUserReasons = (): ReportReason[] => [
+    { 
+      value: "harassment", 
+      label: "Harassment or abusive behavior", 
+      severity: "high", 
+      description: "Threatening or inappropriate conduct" 
+    },
+    { 
+      value: "no_show", 
+      label: "Repeated no-show", 
+      severity: "medium", 
+      description: "Multiple missed pickups without notice" 
+    },
+    { 
+      value: "misconduct", 
+      label: "General misconduct", 
+      severity: "low", 
+      description: "Minor inappropriate behavior" 
+    },
+    { 
+      value: "safety", 
+      label: "Safety concerns", 
+      severity: "high", 
+      description: "Threatening or dangerous behavior" 
+    },
+    { 
+      value: "fraud", 
+      label: "Suspected fraud", 
+      severity: "high", 
+      description: "Attempting to misuse the system" 
+    },
+    { 
+      value: "other", 
+      label: "Other concern", 
+      severity: "medium", 
+      description: "Additional issues not listed" 
+    }
+  ];
+
+  const getReasons = (): ReportReason[] => {
+    switch (reportType) {
+      case 'food':
+        return getFoodReasons();
+      case 'campaign':
+        return getCampaignReasons();
+      case 'user':
+      case 'volunteer':
+        return getUserReasons();
+      default:
+        return getFoodReasons();
+    }
+  };
+
+  const reasons = getReasons();
 
   const severityLevels = [
     { value: "low", label: "Low", color: "bg-green-100 text-green-800", description: "Minor issue" },
@@ -98,8 +241,68 @@ export function ReportModal({
     { value: "high", label: "High", color: "bg-red-100 text-red-600", description: "Urgent safety issue" }
   ];
 
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  // Severity card styling based on severity level
+  const getSeverityCardStyle = (severity: 'low' | 'medium' | 'high') => {
+    switch (severity) {
+      case 'low':
+        return {
+          bg: 'bg-green-50',
+          border: 'border-green-200',
+          text: 'text-green-800',
+          icon: 'text-green-600'
+        };
+      case 'medium':
+        return {
+          bg: 'bg-amber-50',
+          border: 'border-amber-200',
+          text: 'text-amber-800',
+          icon: 'text-amber-600'
+        };
+      case 'high':
+        return {
+          bg: 'bg-red-50',
+          border: 'border-red-200',
+          text: 'text-red-800',
+          icon: 'text-red-600'
+        };
+      default:
+        return {
+          bg: 'bg-amber-50',
+          border: 'border-amber-200',
+          text: 'text-amber-800',
+          icon: 'text-amber-600'
+        };
+    }
+  };
+
+  const handleInputChange = (field: string, value: string) => {
+    if (field === "reason") {
+      const selectedReason = reasons.find(reason => reason.value === value);
+      setFormData(prev => ({ 
+        ...prev, 
+        [field]: value,
+        severity: selectedReason?.severity || "medium"
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
+  const getCurrentSeverity = () => {
+    if (formData.reason) {
+      const selectedReason = reasons.find(reason => reason.value === formData.reason);
+      return selectedReason?.severity || "medium";
+    }
+    return formData.severity;
+  };
+
+  const getSelectedReason = () => {
+    return reasons.find(reason => reason.value === formData.reason);
+  };
+
+  const getSeverityInfo = () => {
+    const severity = getCurrentSeverity();
+    return severityLevels.find(level => level.value === severity) || severityLevels[1];
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -177,6 +380,7 @@ export function ReportModal({
       
       const reportData = {
         ...formData,
+        severity: getCurrentSeverity(),
         reportType,
         targetId,
         targetName,
@@ -206,6 +410,8 @@ export function ReportModal({
     switch (reportType) {
       case 'food': return Utensils;
       case 'campaign': return Users;
+      case 'user': return User;
+      case 'volunteer': return Shield;
       default: return User;
     }
   };
@@ -214,11 +420,26 @@ export function ReportModal({
     switch (reportType) {
       case 'food': return 'bg-orange-500';
       case 'campaign': return 'bg-green-500';
+      case 'user': return 'bg-blue-500';
+      case 'volunteer': return 'bg-purple-500';
       default: return 'bg-blue-500';
     }
   };
 
+  const getReportTypeLabel = () => {
+    switch (reportType) {
+      case 'food': return 'Food Item';
+      case 'campaign': return 'Campaign';
+      case 'user': return 'User';
+      case 'volunteer': return 'Volunteer';
+      default: return 'Item';
+    }
+  };
+
   const ReportTypeIcon = getReportTypeIcon();
+  const severityInfo = getSeverityInfo();
+  const selectedReason = getSelectedReason();
+  const severityCardStyle = getSeverityCardStyle(getCurrentSeverity());
 
   const getFileIcon = (file: File) => {
     if (file.type.startsWith('image/')) return Image;
@@ -281,7 +502,7 @@ export function ReportModal({
             </div>
             <div>
               <div className="font-bold text-gray-800">
-                Report {reportType === 'food' ? 'Food Item' : 'Campaign'}
+                Report {getReportTypeLabel()}
               </div>
               <div className="text-sm text-gray-600 font-normal">
                 Help maintain community standards
@@ -300,7 +521,7 @@ export function ReportModal({
             <p className="font-medium text-gray-800">{targetName}</p>
             <div className="flex items-center mt-2 text-sm text-gray-600">
               <User className="w-4 h-4 mr-2" />
-              <span>Posted by: {safeReportedUser.name}</span>
+              <span>{safeReportedUser.type === 'organizer' ? 'Organized by: ' : 'Posted by: '}{safeReportedUser.name}</span>
             </div>
           </div>
 
@@ -326,34 +547,41 @@ export function ReportModal({
               <SelectContent>
                 {reasons.map((reason) => (
                   <SelectItem key={reason.value} value={reason.value} className="text-sm">
-                    {reason.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Severity Level */}
-          <div className="space-y-2">
-            <Label>Severity Level</Label>
-            <Select value={formData.severity} onValueChange={(value) => handleInputChange("severity", value)}>
-              <SelectTrigger className="h-11 rounded-xl border-gray-200 bg-white">
-                <SelectValue placeholder="How serious is this issue?" />
-              </SelectTrigger>
-              <SelectContent>
-                {severityLevels.map((level) => (
-                  <SelectItem key={level.value} value={level.value} className="text-sm">
-                    <div className="flex items-center justify-between w-full">
-                      <span>{level.label}</span>
-                      <Badge className={`${level.color} text-xs px-2 py-1 rounded-full`}>
-                        {level.description}
-                      </Badge>
+                    <div>
+                      <div className="font-medium">{reason.label}</div>
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+
+          {/* Auto-assigned Severity Display */}
+          {formData.reason && selectedReason && (
+            <div className={`p-4 rounded-xl border-2 ${severityCardStyle.bg} ${severityCardStyle.border}`}>
+              <div className="flex items-start justify-between">
+                <div className="flex items-start space-x-3 flex-1">
+                  <Shield className={`w-5 h-5 mt-0.5 flex-shrink-0 ${severityCardStyle.icon}`} />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <p className={`text-sm font-semibold ${severityCardStyle.text}`}>
+                        {severityInfo.label} Priority
+                      </p>
+                      <Badge className={`${severityInfo.color} text-sm px-3 py-1 rounded-full font-medium`}>
+                        {severityInfo.value.toUpperCase()}
+                      </Badge>
+                    </div>
+                    <p className={`text-xs ${severityCardStyle.text}`}>
+                      <span className="font-medium">Reason:</span> {selectedReason.label}
+                    </p>
+                    <p className={`text-xs mt-1 ${severityCardStyle.text}`}>
+                      {selectedReason.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Description */}
           <div className="space-y-2">

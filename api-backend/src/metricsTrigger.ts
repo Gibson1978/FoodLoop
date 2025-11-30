@@ -3,21 +3,25 @@ import {onDocumentWritten} from "firebase-functions/v2/firestore";
 import {getFirestore} from "firebase-admin/firestore";
 
 // Trigger when food listing status changes to completed
-export const onFoodListingCompleted = onDocumentWritten(
+export const onFoodListingUpdated = onDocumentWritten(
   "foodListings/{listingId}",
   async (event) => {
     const db = getFirestore();
     const beforeData = event.data?.before.data();
     const afterData = event.data?.after.data();
 
-    // Check if status changed to completed
-    if (beforeData?.status !== "completed" && afterData?.status === "completed") {
-      console.log(`🍎 Food listing ${event.params.listingId} marked as completed`);
+    if (!afterData) return;
 
+    // Trigger on status change to completed OR rating change
+    const statusChangedToCompleted =
+      beforeData?.status !== "completed" && afterData?.status === "completed";
+    const ratingChanged =
+      beforeData?.rating !== afterData?.rating && afterData?.status === "completed";
+
+    if (statusChangedToCompleted || ratingChanged) {
+      console.log(`🍎 Food listing ${event.params.listingId} updated, recalculating donor metrics`);
       try {
-        // Recalculate donor metrics
-        await recalculateDonorMetrics(db, afterData.donorId);
-        console.log(`📊 Donor metrics recalculated for: ${afterData.donorId}`);
+        await calculateDonorMetrics(db, afterData.donorId);
       } catch (error) {
         console.error("Error recalculating donor metrics:", error);
       }
@@ -26,21 +30,25 @@ export const onFoodListingCompleted = onDocumentWritten(
 );
 
 // Trigger when campaign status changes to completed
-export const onCampaignCompleted = onDocumentWritten(
+export const onCampaignUpdated = onDocumentWritten(
   "campaigns/{campaignId}",
   async (event) => {
     const db = getFirestore();
     const beforeData = event.data?.before.data();
     const afterData = event.data?.after.data();
 
-    // Check if status changed to completed
-    if (beforeData?.status !== "completed" && afterData?.status === "completed") {
-      console.log(`🎯 Campaign ${event.params.campaignId} marked as completed`);
+    if (!afterData) return;
 
+    // Trigger on status change to completed OR rating change
+    const statusChangedToCompleted =
+      beforeData?.status !== "completed" && afterData?.status === "completed";
+    const ratingChanged =
+      beforeData?.rating !== afterData?.rating && afterData?.status === "completed";
+
+    if (statusChangedToCompleted || ratingChanged) {
+      console.log(`🎯 Campaign ${event.params.campaignId} updated, recalculating volunteer metrics`);
       try {
-        // Recalculate volunteer metrics
-        await recalculateVolunteerMetrics(db, afterData.organizerId);
-        console.log(`📊 Volunteer metrics recalculated for: ${afterData.organizerId}`);
+        await calculateVolunteerMetrics(db, afterData.organizerId);
       } catch (error) {
         console.error("Error recalculating volunteer metrics:", error);
       }
@@ -56,13 +64,15 @@ export const onReservationCompleted = onDocumentWritten(
     const beforeData = event.data?.before.data();
     const afterData = event.data?.after.data();
 
+    if (!afterData) return;
+
     // Check if status changed to completed
     if (beforeData?.status !== "completed" && afterData?.status === "completed") {
       console.log(`📦 Reservation ${event.params.reservationId} marked as completed`);
 
       try {
         // Recalculate receiver metrics
-        await recalculateReceiverMetrics(db, afterData.userId);
+        await calculateReceiverMetrics(db, afterData.userId);
         console.log(`📊 Receiver metrics recalculated for: ${afterData.userId}`);
 
         // Also recalculate donor metrics since this affects their stats
@@ -71,7 +81,7 @@ export const onReservationCompleted = onDocumentWritten(
         if (foodListing.exists) {
           const foodListingData = foodListing.data();
           if (foodListingData) {
-            await recalculateDonorMetrics(db, foodListingData.donorId);
+            await calculateDonorMetrics(db, foodListingData.donorId);
           }
         }
       } catch (error) {
@@ -89,13 +99,15 @@ export const onCampaignRegistrationAttended = onDocumentWritten(
     const beforeData = event.data?.before.data();
     const afterData = event.data?.after.data();
 
+    if (!afterData) return;
+
     // Check if status changed to attended
     if (beforeData?.status !== "attended" && afterData?.status === "attended") {
       console.log(`🎪 Campaign registration ${event.params.registrationId} marked as attended`);
 
       try {
         // Recalculate receiver metrics
-        await recalculateReceiverMetrics(db, afterData.userId);
+        await calculateReceiverMetrics(db, afterData.userId);
         console.log(`📊 Receiver metrics recalculated for: ${afterData.userId}`);
       } catch (error) {
         console.error("Error recalculating receiver metrics after campaign attendance:", error);
@@ -105,17 +117,12 @@ export const onCampaignRegistrationAttended = onDocumentWritten(
 );
 
 // Helper functions for Admin SDK
-async function recalculateDonorMetrics(db: FirebaseFirestore.Firestore, donorId: string) {
+async function calculateDonorMetrics(db: FirebaseFirestore.Firestore, donorId: string) {
+  console.log(`📊 Calculating donor metrics for: ${donorId}`);
   const foodListingsQuery = db.collection("foodListings")
     .where("donorId", "==", donorId)
     .where("status", "==", "completed");
-
   const snapshot = await foodListingsQuery.get();
-
-  let totalFoodWasteReduced = 0;
-  let totalDonations = 0;
-  const uniqueReceivers = new Set<string>();
-
   const UNIT_CONVERSIONS = {
     kg: 1,
     servings: 0.25,
@@ -124,21 +131,32 @@ async function recalculateDonorMetrics(db: FirebaseFirestore.Firestore, donorId:
     liters: 1,
   };
 
+  let totalFoodWasteReduced = 0;
+  let totalDonations = 0;
+  const uniqueReceivers = new Set<string>();
+  let totalRating = 0;
+  let ratingCount = 0;
+
   // Calculate from completed food listings
   for (const doc of snapshot.docs) {
     const listing = doc.data();
-    // Use collectedQuantity (actual amount collected) for waste reduction calculation
+    // Food waste calculation - use collectedQuantity (actual collected amount)
     const collectedQty = listing.collectedQuantity || 0;
     const kgCollected = collectedQty *
       (UNIT_CONVERSIONS[listing.quantityUnit as keyof typeof UNIT_CONVERSIONS] || 1);
-
     totalFoodWasteReduced += kgCollected;
 
     if (collectedQty > 0) {
       totalDonations += 1;
     }
 
-    // Get unique receivers from completed reservations for this listing
+    // Rating calculation
+    if (listing.rating && listing.rating > 0) {
+      totalRating += listing.rating;
+      ratingCount++;
+    }
+
+    // Unique receivers from completed reservations for this listing
     const reservationsQuery = db.collection("foodReservations")
       .where("foodListingId", "==", doc.id)
       .where("status", "==", "completed");
@@ -150,56 +168,67 @@ async function recalculateDonorMetrics(db: FirebaseFirestore.Firestore, donorId:
     });
   }
 
-  // People helped = unique receivers who actually collected food
   const peopleHelped = uniqueReceivers.size;
+  const averageRating = ratingCount > 0 ? totalRating / ratingCount : 0;
 
   // Update donor metrics
   await db.collection("users").doc(donorId).update({
     "metrics.donor.foodWasteReduced": totalFoodWasteReduced,
     "metrics.donor.peopleHelped": peopleHelped,
     "metrics.donor.totalDonations": totalDonations,
+    "metrics.donor.rating": averageRating,
+    "metrics.donor.totalRatings": ratingCount,
     "updatedAt": new Date(),
   });
 
   console.log(
     `📊 Donor ${donorId} metrics: ${totalFoodWasteReduced}kg waste reduced, ` +
-    `${peopleHelped} people helped, ${totalDonations} donations`
+    `${peopleHelped} people helped, ${totalDonations} donations, ${averageRating} avg rating`
   );
 }
 
-async function recalculateVolunteerMetrics(db: FirebaseFirestore.Firestore, volunteerId: string) {
+async function calculateVolunteerMetrics(db: FirebaseFirestore.Firestore, volunteerId: string) {
+  console.log(`📊 Calculating volunteer metrics for: ${volunteerId}`);
   const campaignsQuery = db.collection("campaigns")
     .where("organizerId", "==", volunteerId)
     .where("status", "==", "completed");
 
   const snapshot = await campaignsQuery.get();
-
   let totalHours = 0;
   let campaignsHeld = 0;
+  let totalRating = 0;
+  let ratingCount = 0;
 
   snapshot.forEach((doc) => {
     const campaign = doc.data();
     campaignsHeld += 1;
 
-    // Calculate hours volunteered from campaign duration
+    // Rating calculation
+    if (campaign.rating && campaign.rating > 0) {
+      totalRating += campaign.rating;
+      ratingCount++;
+    }
+
+    // Hours calculation from campaign duration
     if (campaign.startTime && campaign.endTime && campaign.campaignDate) {
       try {
-        // Create proper datetime objects for accurate duration calculation
-        const startDateTime = new Date(`${campaign.campaignDate}T${campaign.startTime}`);
-        const endDateTime = new Date(`${campaign.campaignDate}T${campaign.endTime}`);
+        // Helper function - assume times are in Malaysia time (UTC+8)
+        const createLocalDateTime = (dateStr: string, timeStr: string): Date => {
+          return new Date(`${dateStr}T${timeStr}:00+08:00`);
+        };
 
-        // Handle cases where end time might be on next day
+        const startDateTime = createLocalDateTime(campaign.campaignDate, campaign.startTime);
+        const endDateTime = createLocalDateTime(campaign.campaignDate, campaign.endTime);
+
+        // Handle overnight campaigns
         if (endDateTime < startDateTime) {
           endDateTime.setDate(endDateTime.getDate() + 1);
         }
 
         const hours = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60);
 
-        if (hours > 0 && hours < 24) { // Sanity check: reasonable campaign duration
+        if (hours > 0 && hours < 24) {
           totalHours += hours;
-          console.log(
-            `⏱️ Campaign ${doc.id}: ${hours} hours (${campaign.startTime} - ${campaign.endTime})`
-          );
         }
       } catch (error) {
         console.error(`Error calculating hours for campaign ${doc.id}:`, error);
@@ -207,16 +236,23 @@ async function recalculateVolunteerMetrics(db: FirebaseFirestore.Firestore, volu
     }
   });
 
+  const averageRating = ratingCount > 0 ? totalRating / ratingCount : 0;
+
   await db.collection("users").doc(volunteerId).update({
     "metrics.volunteer.hoursVolunteered": totalHours,
     "metrics.volunteer.campaignsHeld": campaignsHeld,
+    "metrics.volunteer.rating": averageRating,
+    "metrics.volunteer.totalRatings": ratingCount,
     "updatedAt": new Date(),
   });
 
-  console.log(`📊 Volunteer ${volunteerId} metrics: ${totalHours} hours, ${campaignsHeld} campaigns`);
+  console.log(
+    `📊 Volunteer ${volunteerId} metrics: ${totalHours} hours, ` +
+    `${campaignsHeld} campaigns, ${averageRating} avg rating`
+  );
 }
 
-async function recalculateReceiverMetrics(db: FirebaseFirestore.Firestore, receiverId: string) {
+async function calculateReceiverMetrics(db: FirebaseFirestore.Firestore, receiverId: string) {
   // Get completed food reservations
   const foodReservationsQuery = db.collection("foodReservations")
     .where("userId", "==", receiverId)

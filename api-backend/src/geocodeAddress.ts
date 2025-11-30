@@ -31,8 +31,8 @@ export const geocodeAddress = functions.https.onCall(
     }
 
     try {
-      // 3. Get API key from environment
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY || functions.config().google?.maps_api_key;
+      // 3. Get API key from environment (updated for Firebase v12+)
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       if (!apiKey) {
         console.error("Google Maps API key not configured");
         throw new functions.https.HttpsError(

@@ -1,11 +1,12 @@
-// FoodDetailScreen.tsx (Volunteer - Green Theme)
+// FoodDetailScreen.tsx - Unified version for both receiver and volunteer
 import { useState, useEffect, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../../../UnifiedFolder/ui/card";
-import { Button } from "../../../UnifiedFolder/ui/button";
-import { Badge } from "../../../UnifiedFolder/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "../../../UnifiedFolder/ui/avatar";
-import { Input } from "../../../UnifiedFolder/ui/input";
-import { ImageWithFallback } from "../../../UnifiedFolder/Images/ImageWithFallback";
+import { Card, CardContent, CardHeader, CardTitle } from "../../UnifiedFolder/ui/card";
+import { Button } from "../../UnifiedFolder/ui/button";
+import { Badge } from "../../UnifiedFolder/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "../../UnifiedFolder/ui/avatar";
+import { Input } from "../../UnifiedFolder/ui/input";
+import { ImageWithFallback } from "../../UnifiedFolder/Images/ImageWithFallback";
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../UnifiedFolder/ui/alert-dialog";
 import { 
   ArrowLeft, 
   MapPin, 
@@ -29,21 +30,22 @@ import {
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
-import { getApprovedFoodListings, type FoodListing } from "../../../Firebase/foodUsers";
-import { openExternalMapWithAddress } from "../../../UnifiedFolder/LocationFolder/ExternalMap";
-import { reserveFood } from '../../../Firebase/reservationService';
-import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../../UnifiedFolder/ui/alert-dialog";
+import { getApprovedFoodListings, type FoodListing } from "../../Firebase/foodUsers";
+import { openExternalMapWithAddress } from "../../UnifiedFolder/LocationFolder/ExternalMap";
+import { reserveFood } from '../../Firebase/reservationService';
 
 interface FoodDetailScreenProps {
   foodId: string;
   onBack: () => void;
-  onReport: (reportType: 'food', targetId: string, targetName: string, reportedUser: any) => void; 
+  onReport: (reportType: 'food', targetId: string, targetName: string, reportedUser: any) => void;
+  userRole: 'receiver' | 'volunteer';
 }
 
 export function FoodDetailScreen({ 
   foodId, 
   onBack, 
-  onReport 
+  onReport,
+  userRole 
 }: FoodDetailScreenProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showReservationDialog, setShowReservationDialog] = useState(false);
@@ -55,6 +57,54 @@ export function FoodDetailScreen({
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
+
+  // Theme configuration based on user role
+  const themeConfig = {
+    volunteer: {
+      primary: 'text-green-600',
+      bgLight: 'bg-green-50',
+      bgHover: 'hover:bg-green-50',
+      border: 'border-green-200',
+      button: 'bg-green-500 hover:bg-green-600',
+      badge: 'bg-green-50 text-green-700 border-green-200',
+      accent: 'text-green-600',
+      carouselActive: 'bg-green-500',
+      carouselInactive: 'bg-green-300'
+    },
+    receiver: {
+      primary: 'text-amber-600',
+      bgLight: 'bg-amber-50',
+      bgHover: 'hover:bg-amber-50',
+      border: 'border-amber-200',
+      button: 'bg-red-500 hover:bg-red-600',
+      badge: 'bg-amber-50 text-amber-700 border-amber-200',
+      accent: 'text-amber-600',
+      carouselActive: 'bg-amber-500',
+      carouselInactive: 'bg-amber-300'
+    }
+  };
+
+  const theme = themeConfig[userRole];
+
+  // Role-specific text
+  const roleText = {
+    volunteer: {
+      headerSubtitle: "Reserve for delivery",
+      reserveButton: "Reserve This Food",
+      successTitle: "Reservation Successful! 🎉",
+      successDescription: (quantity: number, unit: string, title: string) => 
+        `You have successfully reserved ${quantity} ${unit} of ${title}. Please contact the donor to coordinate pickup and delivery.`
+    },
+    receiver: {
+      headerSubtitle: "Reserve your meal",
+      reserveButton: "Reserve This Food", 
+      successTitle: "Reservation Successful! 🎉",
+      successDescription: (quantity: number, unit: string, title: string) =>
+        `You have successfully reserved ${quantity} ${unit} of ${title}. Please contact the donor to coordinate pickup.`
+    }
+  };
+
+  const text = roleText[userRole];
 
   // Fetch food item data from Firebase
   useEffect(() => {
@@ -122,7 +172,7 @@ export function FoodDetailScreen({
   const confirmReservation = async () => {
     if (!foodItem) return;
     
-    const result = await reserveFood(foodId, reservationQuantity, "volunteer");
+    const result = await reserveFood(foodId, reservationQuantity, userRole);
     
     if (result.success) {
       setShowReservationDialog(false);
@@ -262,12 +312,12 @@ export function FoodDetailScreen({
       <div className="sticky top-0 z-10 bg-white border-b border-border">
         <div className="flex items-center justify-between p-4 sm:p-6">
           <div className="flex items-center space-x-3">
-            <Button variant="ghost" size="sm" onClick={onBack} className="p-2 hover:bg-green-50">
-              <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
+            <Button variant="ghost" size="sm" onClick={onBack} className={`p-2 ${theme.bgHover}`}>
+              <ArrowLeft className={`w-5 h-5 sm:w-6 sm:h-6 ${theme.primary}`} />
             </Button>
             <div>
               <h1 className="text-lg sm:text-xl font-bold text-gray-900">Food Details</h1>
-              <p className="text-xs sm:text-sm text-gray-500">Reserve for delivery</p>
+              <p className="text-xs sm:text-sm text-gray-500">{text.headerSubtitle}</p>
             </div>
           </div>
           
@@ -326,17 +376,17 @@ export function FoodDetailScreen({
             )}
           </div>
           
-          {/* Dots Indicator */}
+          {/* Dots Indicator - Improved styling */}
           {foodItem.images && foodItem.images.length > 1 && (
             <div className="flex justify-center mt-3 space-x-2">
               {foodItem.images.map((_, index) => (
                 <button
                   key={index}
                   onClick={() => setCurrentImageIndex(index)}
-                  className={`w-2 h-2 rounded-full transition-all ${
+                  className={`transition-all duration-300 ${
                     index === currentImageIndex 
-                      ? 'bg-amber-500 w-6' 
-                      : 'bg-gray-300 hover:bg-gray-400'
+                      ? `w-8 h-2 ${theme.carouselActive} rounded-full` 
+                      : `w-2 h-2 ${theme.carouselInactive} rounded-full hover:${theme.carouselActive}`
                   }`}
                 />
               ))}
@@ -350,7 +400,7 @@ export function FoodDetailScreen({
             <div className="space-y-3 sm:space-y-4">
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <CategoryIcon className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+                  <CategoryIcon className={`w-4 h-4 sm:w-5 sm:h-5 ${theme.primary}`} />
                   <Badge variant="outline" className="text-xs sm:text-sm">
                     {foodItem.category}
                   </Badge>
@@ -361,7 +411,7 @@ export function FoodDetailScreen({
                 </div>
                 <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{foodItem.title}</h1>
                 <div className="flex items-center space-x-2 sm:space-x-4 mt-2">
-                  <Badge variant="outline" className="flex items-center gap-1 text-xs sm:text-sm bg-green-50 text-green-700 border-green-200">
+                  <Badge variant="outline" className={`flex items-center gap-1 text-xs sm:text-sm ${theme.badge}`}>
                     <Package className="w-3 h-3" />
                     {foodItem.remainingQuantity} {foodItem.quantityUnit} left
                   </Badge>
@@ -372,7 +422,7 @@ export function FoodDetailScreen({
                 </div>
               </div>
 
-              <p className="text-gray-600 leading-relaxed text-sm sm:text-base">
+              <p className="text-gray-600 leading-relaxed text-sm sm:text-base break-words whitespace-pre-wrap">
                 {foodItem.description}
               </p>
 
@@ -389,21 +439,21 @@ export function FoodDetailScreen({
               )}
 
               {/* Available Times */}
-              <div className="flex items-center space-x-2 p-3 bg-green-50 rounded-lg border border-green-200">
-                <Calendar className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <div className={`flex items-center space-x-2 p-3 ${theme.bgLight} rounded-lg border ${theme.border}`}>
+                <Calendar className={`w-4 h-4 ${theme.accent} flex-shrink-0`} />
                 <div>
-                  <p className="font-medium text-xs sm:text-sm text-green-800">Available</p>
-                  <p className="text-green-700 text-xs sm:text-sm">{formatDateTimeDisplay()}</p>
+                  <p className={`font-medium text-xs sm:text-sm ${theme.accent}`}>Available</p>
+                  <p className={`${theme.accent} text-xs sm:text-sm`}>{formatDateTimeDisplay()}</p>
                 </div>
               </div>
 
               {/* Pickup Instructions */}
               {foodItem.pickupInstructions && (
-                <div className="flex items-start space-x-2 sm:space-x-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                  <AlertTriangle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                <div className={`flex items-start space-x-2 sm:space-x-3 p-3 ${theme.bgLight} rounded-lg border ${theme.border}`}>
+                  <AlertTriangle className={`w-4 h-4 ${theme.accent} mt-0.5 flex-shrink-0`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-green-800">Pickup Instructions</p>
-                    <p className="text-xs sm:text-sm text-green-700">{foodItem.pickupInstructions}</p>
+                    <p className={`text-sm font-medium ${theme.accent}`}>Pickup Instructions</p>
+                    <p className={`text-xs sm:text-sm ${theme.accent} break-words whitespace-pre-wrap`}>{foodItem.pickupInstructions}</p>
                   </div>
                 </div>
               )}
@@ -452,7 +502,7 @@ export function FoodDetailScreen({
         <Card className="shadow-md border-0 rounded-xl sm:rounded-lg">
           <CardHeader className="pb-3 sm:pb-4">
             <CardTitle className="text-base sm:text-lg flex items-center gap-2 text-gray-900">
-              <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
+              <MapPin className={`w-5 h-5 sm:w-6 sm:h-6 ${theme.primary}`} />
               Pickup Details
             </CardTitle>
           </CardHeader>
@@ -460,14 +510,13 @@ export function FoodDetailScreen({
             <div className="flex items-start space-x-2 sm:space-x-3">
               <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm sm:text-base text-gray-900">{foodItem.pickupAddress}</p>
-                <p className="text-xs sm:text-sm text-gray-600 mt-1">{foodItem.pickupInstructions}</p>
+                <p className="font-semibold text-sm sm:text-base text-gray-900 break-words whitespace-pre-wrap">{foodItem.pickupAddress}</p>
               </div>
               <Button 
                 variant="outline" 
                 size="sm"
                 onClick={handleDirections}
-                className="shrink-0 text-xs h-9 sm:h-10 bg-green-500 hover:bg-green-600 text-white border-green-500"
+                className={`shrink-0 text-xs h-9 sm:h-10 ${theme.button} text-white border-transparent`}
               >
                 <Navigation className="w-4 h-4 mr-1" />
                 Directions
@@ -490,9 +539,9 @@ export function FoodDetailScreen({
         <div className="pb-4 sm:pb-6">
           <Button
             onClick={handleReserve}
-            className="w-full h-12 sm:h-14 bg-red-500 hover:bg-red-600 text-white rounded-xl text-base sm:text-lg font-semibold shadow-lg"
+            className={`w-full h-12 sm:h-14 ${theme.button} text-white rounded-xl text-base sm:text-lg font-semibold shadow-lg`}
           >
-            Reserve This Food
+            {text.reserveButton}
           </Button>
         </div>
       </div>
@@ -507,7 +556,7 @@ export function FoodDetailScreen({
             <CardContent className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-4 block">Quantity to Reserve</label>
-
+                
                 {/* Quantity Selector - Input between + and - buttons */}
                 <div className="flex items-center justify-between gap-3">
                   <Button
@@ -572,7 +621,7 @@ export function FoodDetailScreen({
               </Button>
               <Button
                 onClick={confirmReservation}
-                className="flex-1 h-12 bg-green-500 hover:bg-green-600 text-white font-semibold"
+                className={`flex-1 h-12 ${theme.button} text-white font-semibold`}
               >
                 Confirm Reserve
               </Button>
@@ -595,29 +644,28 @@ export function FoodDetailScreen({
         </div>
       )}
 
-      {/*Success Dialog */}
+      {/* Success Dialog */}
       <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
-          <AlertDialogContent className="mx-4 sm:mx-0">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-lg sm:text-xl flex items-center gap-2">
-                <CheckCircle className="w-6 h-6 text-green-600" />
-                Reservation Successful! 🎉
-              </AlertDialogTitle>
-              <AlertDialogDescription className="text-sm sm:text-base">
-                You have successfully reserved <strong>{reservationQuantity} {foodItem?.quantityUnit}</strong> of{" "}
-                <strong>{foodItem?.title}</strong>. Please contact the donor to coordinate pickup.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogAction 
-                onClick={() => setShowSuccessDialog(false)}
-                className="bg-green-500 hover:bg-green-600 text-white px-4 sm:px-6 py-2 text-sm sm:text-base"
-              >
-                Continue
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <AlertDialogContent className="mx-4 sm:mx-0">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg sm:text-xl flex items-center gap-2">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+              {text.successTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm sm:text-base">
+              {text.successDescription(reservationQuantity, foodItem?.quantityUnit || '', foodItem?.title || '')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction 
+              onClick={() => setShowSuccessDialog(false)}
+              className={`${theme.button} text-white px-4 sm:px-6 py-2 text-sm sm:text-base`}
+            >
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -110,18 +110,12 @@ export const reserveFood = async (
       const quantityDiff = quantity - oldQuantity;
 
       // Update food listing quantities with the difference
-      const updateData: any = {
+      // FIX: Both receivers and volunteers should only affect reservedQuantity
+      await updateDoc(doc(db, 'foodListings', foodListingId), {
         remainingQuantity: foodData.remainingQuantity - quantityDiff,
+        reservedQuantity: (foodData.reservedQuantity || 0) + quantityDiff,
         updatedAt: new Date()
-      };
-
-      if (userType === 'receiver') {
-        updateData.reservedQuantity = (foodData.reservedQuantity || 0) + quantityDiff;
-      } else if (userType === 'volunteer') {
-        updateData.collectedQuantity = (foodData.collectedQuantity || 0) + quantityDiff;
-      }
-
-      await updateDoc(doc(db, 'foodListings', foodListingId), updateData);
+      });
 
     } else {
       // Create a new reservation record
@@ -142,18 +136,12 @@ export const reserveFood = async (
       reservationId = reservationRef.id;
 
       // Update food listing quantities for new reservation
-      const updateData: any = {
+      // FIX: Both receivers and volunteers should only affect reservedQuantity
+      await updateDoc(doc(db, 'foodListings', foodListingId), {
         remainingQuantity: foodData.remainingQuantity - quantity,
+        reservedQuantity: (foodData.reservedQuantity || 0) + quantity,
         updatedAt: new Date()
-      };
-
-      if (userType === 'receiver') {
-        updateData.reservedQuantity = (foodData.reservedQuantity || 0) + quantity;
-      } else if (userType === 'volunteer') {
-        updateData.collectedQuantity = (foodData.collectedQuantity || 0) + quantity;
-      }
-
-      await updateDoc(doc(db, 'foodListings', foodListingId), updateData);
+      });
     }
 
     return { 
@@ -590,23 +578,17 @@ export const cancelFoodReservation = async (
     });
 
     // 5. Update food listing quantities - return the reserved quantity
+    // FIX: Both receivers and volunteers should only affect reservedQuantity
     const foodDoc = await getDoc(doc(db, 'foodListings', reservationData.foodListingId));
     if (foodDoc.exists()) {
       const foodData = foodDoc.data();
       const quantity = reservationData.quantity;
       
-      const updateData: any = {
+      await updateDoc(doc(db, 'foodListings', reservationData.foodListingId), {
         remainingQuantity: foodData.remainingQuantity + quantity,
+        reservedQuantity: Math.max(0, (foodData.reservedQuantity || 0) - quantity),
         updatedAt: new Date()
-      };
-
-      if (reservationData.userType === 'receiver') {
-        updateData.reservedQuantity = Math.max(0, (foodData.reservedQuantity || 0) - quantity);
-      } else if (reservationData.userType === 'volunteer') {
-        updateData.collectedQuantity = Math.max(0, (foodData.collectedQuantity || 0) - quantity);
-      }
-
-      await updateDoc(doc(db, 'foodListings', reservationData.foodListingId), updateData);
+      });
     }
 
     return { success: true };

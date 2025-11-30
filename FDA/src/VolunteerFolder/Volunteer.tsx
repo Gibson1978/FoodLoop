@@ -1,17 +1,17 @@
-// Volunteer.tsx - Fixed version
+// Volunteer.tsx - Updated with unified FoodBrowseScreen
 import { useState } from "react";
 import { Home, Search, Plus, MapPin, User } from "lucide-react";
 import { Button } from "../UnifiedFolder/ui/button";
 import { Tabs, TabsContent } from "../UnifiedFolder/ui/tabs";
 
 import { DashboardTab } from "./components/DashboardTab";
-import { FoodBrowseScreen } from "./components/foodtabs/FoodBrowseScreen";
-import { FoodDetailScreen } from "./components/foodtabs/FoodDetailScreen";
+import { FoodBrowseScreen } from "../UnifiedFolder/modals/FoodBrowseScreen"; 
+import { FoodDetailScreen } from "../UnifiedFolder/modals/FoodDetailScreen";
 import { CampaignsTab } from "./components/campaigntabs/CampaignTabs";
 import { CreateCampaignTab } from "./components/campaigntabs/CreateCampaignTab";
 import { ProfileTab } from "../UnifiedFolder/profile/ProfileTab";
 import { ReportModal } from "../UnifiedFolder/modals/ReportModal";
-import { ReservationListPage } from "../UnifiedFolder/modals/ReservationListPage"; // Add this import
+import { ReservationListPage } from "../UnifiedFolder/modals/ReservationListPage";
 import type { UserData } from "../Firebase/auth";
 import { reportService } from "../Firebase/userReport";
 
@@ -125,6 +125,18 @@ export default function Volunteer({ onLogout, userData }: VolunteerProps) {
     setActiveTab("upload");
   };
 
+  const handleNavigate = (tab: string, itemId?: string) => {
+    if (itemId) {
+      if (tab === 'browse') {
+        setSelectedFoodId(itemId);
+      } else if (tab === 'campaigns') {
+        // Handle campaign navigation if needed
+        setSelectedCampaignId(itemId);
+      }
+    }
+    setActiveTab(tab);
+  };
+
   // Show reservation list page if active
   if (reservationListPage) {
     return (
@@ -150,7 +162,7 @@ export default function Volunteer({ onLogout, userData }: VolunteerProps) {
           foodId={selectedFoodId}
           onBack={handleBackFromDetail}
           onReport={handleReport}
-          // Remove onReserve since it doesn't exist in FoodDetailScreenProps
+          userRole="volunteer" 
         />
       );
     }
@@ -159,13 +171,14 @@ export default function Volunteer({ onLogout, userData }: VolunteerProps) {
     return (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsContent value="home" className="m-0">
-          <DashboardTab onNavigate={setActiveTab} />
+           <DashboardTab onNavigate={handleNavigate} />
         </TabsContent>
 
         <TabsContent value="browse" className="m-0">
+          {/* Updated: Pass userRole="volunteer" to the unified FoodBrowseScreen */}
           <FoodBrowseScreen 
             onSelectFood={handleSelectFood}
-            // Volunteer-specific props can be added here
+            userRole="volunteer"
           />
         </TabsContent>
 

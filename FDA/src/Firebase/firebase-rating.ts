@@ -35,7 +35,8 @@ export interface Rating {
   // Rating data
   rating: number; // 1-5
   comment?: string;
-  
+  reservationId?: string;
+
   // Metadata
   createdAt: Date;
   updatedAt: Date;
@@ -54,6 +55,7 @@ export const submitRating = async (
   ratingData: {
     rating: number;
     comment?: string;
+    reservationId?: string;
   }
 ): Promise<{success: boolean; error?: string; ratingId?: string}> => {
   try {
@@ -115,16 +117,14 @@ export const submitRating = async (
         raterUserType,
         rating: ratingData.rating,
         comment: ratingData.comment,
+        reservationId: ratingData.reservationId, // Include reservationId
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
       };
 
       const ratingRef = await addDoc(collection(db, 'ratings'), rating);
       ratingId = ratingRef.id;
     }
-
-    // NOTE: Rating aggregation is now handled by Cloud Function
-    // The Cloud Function will automatically update food/campaign and user stats
 
     return { success: true, ratingId };
   } catch (error: any) {

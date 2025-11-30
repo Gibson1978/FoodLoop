@@ -313,7 +313,9 @@ export function ListingDetailDialog({ listing, open, onOpenChange, onCancel, onU
                 placeholder="Describe the food items..."
               />
             ) : (
-              <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">{listing.description}</p>
+              <p className="text-xs sm:text-sm text-gray-600 leading-relaxed break-all whitespace-pre-wrap max-w-full overflow-hidden">
+                {listing.description}
+              </p>
             )}
           </div>
 
@@ -504,9 +506,11 @@ export function ListingDetailDialog({ listing, open, onOpenChange, onCancel, onU
               </>
             ) : (
               <>
-                <p className="text-xs sm:text-sm text-gray-600 break-words">{listing.pickupAddress}</p>
+                <p className="text-xs sm:text-sm text-gray-600 break-all whitespace-pre-wrap max-w-full overflow-hidden">
+                  {listing.pickupAddress}
+                </p>
                 {listing.pickupInstructions && (
-                  <p className="text-[10px] sm:text-xs text-gray-500 bg-gray-50 p-2 rounded break-words">
+                  <p className="text-[10px] sm:text-xs text-gray-500 bg-gray-50 p-2 rounded break-all whitespace-pre-wrap max-w-full overflow-hidden">
                     {listing.pickupInstructions}
                   </p>
                 )}

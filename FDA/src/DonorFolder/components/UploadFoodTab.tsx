@@ -1,19 +1,18 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '../../UnifiedFolder/ui/button';
 import { Input } from '../../UnifiedFolder/ui/input';
 import { Label } from '../../UnifiedFolder/ui/label';
-import { Textarea } from '../../UnifiedFolder/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../UnifiedFolder/ui/select';
 import { Badge } from '../../UnifiedFolder/ui/badge';
 import { Camera, MapPin, Package, Plus, X, CheckCircle, Upload, Info, AlertCircle } from 'lucide-react';
 import { uploadFoodListing } from '../../Firebase/foodUsers';
 import { auth } from '../../Firebase/firebase';
+import { AutoExpandingTextarea } from '../../UnifiedFolder/ui/AutoExpandingTextarea';
 
 interface UploadFoodTabProps {
-  onNavigateToListings: () => void;
 }
 
-export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
+export function UploadFoodTab({ }: UploadFoodTabProps) {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [uploadedImages, setUploadedImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
@@ -42,6 +41,24 @@ export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
   const categories = ['Fresh Produce', 'Cooked Meals', 'Shelf Stable'];
   const quantityUnits = ['servings', 'kg', 'packages', 'containers', 'liters'];
   const suggestedTags = ['Vegetarian', 'Vegan', 'Gluten-Free', 'Halal', 'Allergen Free', 'Dairy Free'];
+  const decimalUnits = ['kg', 'liters'];
+
+  useEffect(() => {
+    if (error) {
+      // Try multiple methods for better mobile compatibility
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      
+      // Also try scrolling the main container
+      document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
+      document.body.scrollTo({ top: 0, behavior: 'smooth' });
+      
+      // Mobile-specific: scroll to the error element itself
+      const errorElement = document.querySelector('[data-error]'); // Add this to your error div
+      if (errorElement) {
+        errorElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, [error]);
 
   // Image upload handler (unchanged)
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,9 +146,22 @@ export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
     }));
   };
 
+
   // Handle quantity input specifically to convert to number
   const handleQuantityChange = (value: string) => {
-    const numValue = parseInt(value) || 0;
+    // Remove leading zeros and allow decimals
+    const cleanValue = value.replace(/^0+/, '') || '0';
+    
+    // Check if the unit allows decimals
+    const allowsDecimals = decimalUnits.includes(formData.quantityUnit);
+    
+    let numValue: number;
+    if (allowsDecimals) {
+      numValue = parseFloat(cleanValue) || 0;
+    } else {
+      numValue = parseInt(cleanValue) || 0;
+    }
+
     setFormData(prev => ({
       ...prev,
       totalQuantity: numValue
@@ -169,7 +199,7 @@ export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
       return;
     }
     if (!formData.startTime || !formData.endTime) {
-      setError('Please select pickup hours');
+      setError('Please select pickup start and end time');
       return;
     }
     if (uploadedImages.length === 0) {
@@ -183,11 +213,16 @@ export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
       setError('Best before date cannot be in the past');
       return;
     }
-    if (formData.availableDate < today) {
-      setError('Available date cannot be in the past');
+
+    if (!formData.availableDate) {
+      setError('Please select available date');
       return;
     }
 
+    if (!formData.startTime || !formData.endTime) {
+      setError('Please select pickup start and end time');
+      return;
+    }
     // Time validation
     if (formData.endTime <= formData.startTime) {
       setError('End time must be after start time');
@@ -275,34 +310,34 @@ export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
   };
 
   if (isSubmitted) {
-    return (
-      <div className="min-h-screen p-4 flex items-center justify-center bg-gradient-to-br from-green-50 to-orange-50">
-        <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg w-full max-w-md text-center p-6 sm:p-8">
-          <div className="flex justify-center mb-4 sm:mb-6">
-            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center">
-              <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-500" />
-            </div>
+  return (
+    <div className="min-h-screen p-4 flex items-center justify-center bg-gradient-to-br from-green-50 to-orange-50">
+      <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg w-full max-w-md text-center p-6 sm:p-8">
+        <div className="flex justify-center mb-4 sm:mb-6">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center">
+            <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-500" />
           </div>
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">Food Listed Successfully!</h2>
-          <p className="text-gray-600 text-sm sm:text-base mb-4">
-            Your food listing has been submitted and is pending admin approval.
-            You'll be notified once it's approved and visible to recipients.
-          </p>
-          <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
-            <p className="text-xs sm:text-sm text-blue-700">
-              ⏳ Currently under review - Thank you for helping reduce food waste!
-            </p>
-          </div>
-          <Button 
-            onClick={onNavigateToListings}
-            className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
-          >
-            View My Listings
-          </Button>
         </div>
+        <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">Food Listed Successfully!</h2>
+        <p className="text-gray-600 text-sm sm:text-base mb-4">
+          Your food listing has been submitted and is <strong>pending admin approval</strong>.
+          You'll be notified once it's approved and visible to recipients.
+        </p>
+        <div className="bg-blue-50 rounded-lg p-3 sm:p-4 mb-4">
+          <p className="text-xs sm:text-sm text-blue-700">
+            ⏳ Currently under review - Thank you for helping reduce food waste!
+          </p>
+        </div>
+        <Button 
+          onClick={() => setIsSubmitted(false)}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
+        >
+          Confirm
+        </Button>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
     <div className="min-h-screen bg-blue-50">
@@ -323,7 +358,9 @@ export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
       <div className="p-3 sm:p-4 pb-20"> 
         {/* Enhanced Error Display */}
         {error && (
-          <div className="mb-3 sm:mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+          <div 
+          data-error="true"
+          className="mb-3 sm:mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
             <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-red-700 text-sm font-medium">{error}</p>
@@ -456,7 +493,8 @@ export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
                       id="totalQuantity"
                       type="number"
                       min="1"
-                      value={formData.totalQuantity}
+                      step={decimalUnits.includes(formData.quantityUnit) ? "0.1" : "1"}
+                      value={formData.totalQuantity === 0 ? '' : formData.totalQuantity}
                       onChange={(e) => handleQuantityChange(e.target.value)}
                       placeholder="e.g., 5"
                       className="rounded-lg sm:rounded-xl border-gray-200 focus:border-green-400 h-9 sm:h-10 text-xs sm:text-sm"
@@ -503,13 +541,12 @@ export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
 
               <div className="space-y-1 sm:space-y-2">
                 <Label htmlFor="description" className="text-gray-700 text-xs sm:text-sm">Additional Details</Label>
-                <Textarea
+                <AutoExpandingTextarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
                   placeholder="Any special instructions, ingredients, storage requirements..."
-                  className="rounded-lg sm:rounded-xl resize-none border-gray-200 focus:border-green-400 text-xs sm:text-sm"
-                  rows={2}
+                  className="rounded-lg sm:rounded-xl border-gray-200 focus:border-green-400 text-xs sm:text-sm"
                   disabled={isSubmitting}
                 />
               </div>
@@ -592,25 +629,24 @@ export function UploadFoodTab({ onNavigateToListings }: UploadFoodTabProps) {
             <div className="space-y-3 sm:space-y-4">
               <div className="space-y-1 sm:space-y-2">
                 <Label htmlFor="pickupAddress" className="text-gray-700 text-xs sm:text-sm">Address *</Label>
-                <Input
+                <AutoExpandingTextarea
                   id="pickupAddress"
                   value={formData.pickupAddress}
                   onChange={(e) => handleInputChange('pickupAddress', e.target.value)}
                   placeholder="Enter pickup address"
-                  className="rounded-lg sm:rounded-xl border-gray-200 focus:border-green-400 h-9 sm:h-10 text-xs sm:text-sm"
+                  className="rounded-lg sm:rounded-xl border-gray-200 focus:border-green-400 text-xs sm:text-sm"
                   disabled={isSubmitting}
                 />
               </div>
               
               <div className="space-y-1 sm:space-y-2">
                 <Label htmlFor="pickupInstructions" className="text-gray-700 text-xs sm:text-sm">Pickup Instructions</Label>
-                <Textarea
+                <AutoExpandingTextarea
                   id="pickupInstructions"
                   value={formData.pickupInstructions}
                   onChange={(e) => handleInputChange('pickupInstructions', e.target.value)}
                   placeholder="Any specific instructions for pickup (e.g., ring doorbell, back entrance, available times...)"
-                  className="rounded-lg sm:rounded-xl resize-none border-gray-200 focus:border-green-400 text-xs sm:text-sm"
-                  rows={2}
+                  className="rounded-lg sm:rounded-xl border-gray-200 focus:border-green-400 text-xs sm:text-sm"
                   disabled={isSubmitting}
                 />
               </div>

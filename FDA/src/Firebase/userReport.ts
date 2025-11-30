@@ -22,7 +22,7 @@ export interface Report {
   reason: string;
   description: string;
   severity: 'low' | 'medium' | 'high';
-  evidenceUrls?: string[]; // Changed from evidence to evidenceUrls
+  evidenceUrls?: string[]; 
   status: 'pending' | 'under_review' | 'resolved' | 'dismissed';
   adminNotes?: string;
   resolvedAt?: Date;

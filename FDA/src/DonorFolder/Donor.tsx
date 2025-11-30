@@ -24,6 +24,8 @@ interface DonorProps {
 
 export default function Donor({ onLogout, userData }: DonorProps) {
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [selectedListingId, setSelectedListingId] = useState<string | null>(null); 
+  const [autoOpenListingId, setAutoOpenListingId] = useState<string | null>(null);
   const [reportModal, setReportModal] = useState<{
     type: "food" | "volunteer" | "campaign";
     targetId: string;
@@ -39,20 +41,6 @@ export default function Donor({ onLogout, userData }: DonorProps) {
 
   const handleNavigateToUpload = () => {
     setActiveTab("upload");
-  };
-
-  const handleNavigateToListings = () => {
-    setActiveTab("listing");
-  };
-
-  // Report handler for donor to report receivers/volunteers
-  const handleReport = (
-    type: "food" | "campaign" | "volunteer",
-    targetId: string,
-    targetName: string,
-    reportedUser?: any
-  ) => {
-    setReportModal({ type, targetId, targetName, reportedUser });
   };
 
   const handleReportSubmit = async (reportData: any) => {
@@ -114,10 +102,14 @@ export default function Donor({ onLogout, userData }: DonorProps) {
             <TabsContent value="dashboard" className="m-0">
               <DashboardTab 
                 onNavigateToUpload={handleNavigateToUpload}
+                onNavigateToListingDetail={(listingId) => {
+                  setActiveTab('listing');
+                  setAutoOpenListingId(listingId);
+                }}
               />
             </TabsContent>
             <TabsContent value="upload" className="m-0">
-              <UploadFoodTab onNavigateToListings={handleNavigateToListings} />
+              <UploadFoodTab/>
             </TabsContent>
             <TabsContent value="listing" className="m-0">
               <ListingsTab 
@@ -130,6 +122,8 @@ export default function Donor({ onLogout, userData }: DonorProps) {
                   });
                 }}
                 userData={userData}
+                autoOpenListingId={autoOpenListingId} 
+                onAutoOpenComplete={() => setAutoOpenListingId(null)} 
               />
             </TabsContent>
             <TabsContent value="profile" className="m-0">

@@ -19,19 +19,9 @@ function Slider({
 }: React.ComponentProps<typeof SliderPrimitive.Root> & {
   variant?: SliderVariant;
 }) {
-  // FIX: Use state to track internal value and avoid pointer capture issues
-  const [internalValue, setInternalValue] = React.useState<number[]>(
-    Array.isArray(value) && value.length > 0 ? value : 
-    Array.isArray(defaultValue) && defaultValue.length > 0 ? defaultValue : 
-    [min]
-  );
-
-  // Update internal value when prop changes
-  React.useEffect(() => {
-    if (Array.isArray(value) && value.length > 0) {
-      setInternalValue(value);
-    }
-  }, [value]);
+  // FIX: Use the provided value or defaultValue, don't manage internal state
+  const sliderValue = Array.isArray(value) && value.length > 0 ? value : 
+    (Array.isArray(defaultValue) && defaultValue.length > 0 ? defaultValue : [min]);
 
   const getVariantColors = () => {
     switch (variant) {
@@ -61,23 +51,19 @@ function Slider({
   return (
     <SliderPrimitive.Root
       data-slot="slider"
-      value={internalValue}
+      value={sliderValue}
       min={min}
       max={max}
       className={cn(
         "relative flex w-full touch-none items-center select-none data-[disabled]:opacity-50",
         className,
       )}
-      onValueChange={(newValue) => {
-        setInternalValue(newValue);
-        props.onValueChange?.(newValue);
-      }}
       {...props}
     >
       <SliderPrimitive.Track
         data-slot="slider-track"
         className={cn(
-          "relative grow overflow-hidden rounded-full data-[orientation=horizontal]:h-2 data-[orientation=horizontal]:w-full",
+          "relative grow overflow-hidden rounded-full h-4 data-[orientation=horizontal]:w-full",
           colors.track
         )}
       >
@@ -86,7 +72,7 @@ function Slider({
           className={cn("absolute h-full rounded-full", colors.range)}
         />
       </SliderPrimitive.Track>
-      {internalValue.map((_, index) => (
+      {sliderValue.map((_, index) => (
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}

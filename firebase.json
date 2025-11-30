@@ -3,6 +3,9 @@
     {
       "source": "api-backend",
       "codebase": "default",
+      "runtime": "nodejs22",
+      "timeout": "60s",
+      "memory": "1GB",
       "predeploy": [
         "npm --prefix \"$RESOURCE_DIR\" run lint",
         "npm --prefix \"$RESOURCE_DIR\" run build"

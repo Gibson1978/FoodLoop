@@ -24,9 +24,11 @@ import { getUserCampaigns, type Campaign } from "../../Firebase/campaignUsers";
 import { DashboardService } from "../../UnifiedFolder/services/DashboardServices";
 import { useLocation } from "../../UnifiedFolder/LocationFolder/useLocation";
 import { UserMetricsService, type UserMetrics } from "../../UnifiedFolder/services/userMetricServices";
+import { usePullToRefresh } from "../../UnifiedFolder/services/usePullToRefresh";
+import { getUserFoodReservations, type FoodReservation } from "../../Firebase/reservationService";
 
 interface DashboardProps {
-  onNavigate: (tab: string) => void;
+   onNavigate: (tab: string, itemId?: string) => void;
 }
 
 export function DashboardTab({ onNavigate }: DashboardProps) {
@@ -34,8 +36,8 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
   const [userMetrics, setUserMetrics] = useState<UserMetrics | null>(null);
   const [recommendedFood, setRecommendedFood] = useState<FoodListing[]>([]);
   const [userCampaigns, setUserCampaigns] = useState<Campaign[]>([]);
+  const [userReservations, setUserReservations] = useState<FoodReservation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   
   const { 
     userLocation, 
@@ -66,15 +68,47 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
 
   // Refresh all data including location
   const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await refreshLocation();
-      // The real-time listeners will automatically update with new location
-    } finally {
-      setRefreshing(false);
-    }
+    await refreshLocation();
   };
 
+   const { 
+    refreshing, 
+    pullDistance, 
+    onTouchStart, 
+    onTouchMove, 
+    onTouchEnd 
+  } = usePullToRefresh(handleRefresh);
+
+  const filterCollectedFood = (items: FoodListing[], reservations: FoodReservation[]): FoodListing[] => {
+    return items.filter(item => {
+      // Check if volunteer has collected this food (completed reservation)
+      const isCollected = reservations.some(reservation => 
+        reservation.foodListingId === item.id && 
+        reservation.status === 'completed'
+      );
+      
+      return !isCollected;
+    });
+  };
+
+  // Load user reservations
+  useEffect(() => {
+    if (!userData) return;
+
+    const loadUserReservations = async () => {
+      try {
+        const result = await getUserFoodReservations();
+        if (result.success && result.data) {
+          setUserReservations(result.data);
+        }
+      } catch (error) {
+        console.error('Error loading user reservations:', error);
+      }
+    };
+
+    loadUserReservations();
+  }, [userData]);
+  
   // Set up real-time listeners when user data is loaded
   useEffect(() => {
     if (!userData) return;
@@ -83,8 +117,10 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
       (listings) => {
         // Only process if we have location or location is loading
         if (userLocation || locationLoading) {
+          // Filter out collected food items
+          const availableFood = filterCollectedFood(listings, userReservations);
           const topFoodListings = DashboardService.getTopDashboardItemsEnhanced(
-            listings,
+            availableFood,
             userLocation,
             3
           );
@@ -96,9 +132,9 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
       }
     );
 
+    // Campaigns listener remains the same (shows volunteer's own campaigns)
     const unsubscribeCampaigns = getUserCampaigns(
       (campaigns) => {
-        // Filter for ongoing campaigns that this volunteer is organizing
         const activeCampaigns = campaigns.filter(campaign => 
           campaign.status === 'ongoing' && campaign.organizerId === userData.uid
         );
@@ -116,7 +152,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
       unsubscribeFood();
       unsubscribeCampaigns();
     };
-  }, [userData, userLocation, locationLoading]);
+  }, [userData, userLocation, locationLoading, userReservations]);
 
   const loadUserData = async () => {
     try {
@@ -204,7 +240,21 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
   const displayName = getDisplayName();
 
   return (
-    <div className="min-h-screen bg-green-50">
+    <div 
+    className="min-h-screen bg-green-50"
+    onTouchStart={onTouchStart}
+    onTouchMove={onTouchMove}
+    onTouchEnd={onTouchEnd}
+  >
+    {/* Pull to refresh indicator */}
+    {refreshing && (
+      <div className="fixed top-0 left-0 right-0 flex justify-center pt-4 z-50">
+        <div className="bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg flex items-center gap-2">
+          <RefreshCw className="w-4 h-4 animate-spin text-green-600" />
+          <span className="text-sm text-green-600">Refreshing...</span>
+        </div>
+      </div>
+    )}
       {/* Header with Refresh Button */}
       <div className="bg-gradient-to-r from-emerald-600 to-green-500 px-4 pt-6 pb-8 flex flex-col justify-center min-h-[150px] rounded-b-lg text-white">
         <div className="flex items-center justify-between">
@@ -212,21 +262,9 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
             <h1 className="text-xl text-white">{getGreeting()}, {displayName}!</h1>
             <p className="text-green-100 mt-1 text-sm">Ready to help your community today?</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              variant="ghost"
-              size="sm"
-              className="text-white hover:bg-white/20"
-            >
-              <RefreshCw className={`w-4 h-4 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
-            </Button>
             <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
               <Leaf className="w-5 h-5 text-white" />
             </div>
-          </div>
         </div>
       </div>
 
@@ -327,7 +365,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
         )}
 
         {/* Recommended Food Section */}
-        {recommendedFood.length > 0 && (
+        {recommendedFood.length > 0 ? (
           <>
             {/* Food Slider */}
             <Card className="shadow-lg border-0 rounded-xl">
@@ -350,7 +388,11 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                       style={{ transform: `translateX(-${currentFoodSlide * 100}%)` }}
                     >
                       {recommendedFood.map((item) => (
-                        <div key={item.id} className="min-w-full h-full flex-shrink-0">
+                        <div 
+                          key={item.id} 
+                          className="min-w-full h-full flex-shrink-0 cursor-pointer"
+                          onClick={() => onNavigate('browse', item.id!)}
+                        >
                           <div className="relative h-full w-full">
                             <ImageWithFallback
                               src={item.images?.[0] || '/placeholder-food.jpg'}
@@ -375,17 +417,21 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                   </div>
                   
                   {/* Slide Indicators */}
-                  <div className="flex justify-center mt-3 space-x-2">
-                    {recommendedFood.map((_, index) => (
-                      <button
-                        key={index}
-                        onClick={() => setCurrentFoodSlide(index)}
-                        className={`w-2 h-2 rounded-full transition-colors duration-200 ${
-                          index === currentFoodSlide ? 'bg-primary' : 'bg-gray-200'
-                        }`}
-                      />
-                    ))}
-                  </div>
+                  {recommendedFood.length > 1 && (
+                    <div className="flex justify-center mt-3 space-x-2">
+                      {recommendedFood.map((_, index) => (
+                        <button
+                          key={index}
+                          onClick={() => setCurrentFoodSlide(index)}
+                          className={`w-2 h-2 rounded-full transition-colors duration-200 ${
+                            index === currentFoodSlide 
+                            ? 'w-8 h-2 bg-green-500 rounded-full' 
+                            : 'w-2 h-2 bg-green-300 rounded-full hover:bg-green-500'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
 
                   {/* Navigation Buttons */}
                   {recommendedFood.length > 1 && (
@@ -426,7 +472,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                   <Card 
                     key={item.id} 
                     className="shadow-sm border-0 hover:shadow-md transition-shadow cursor-pointer rounded-lg"
-                    onClick={() => onNavigate('browse')}
+                    onClick={() => onNavigate('browse', item.id!)}
                   >
                     <CardContent className="p-3">
                       <div className="flex gap-3">
@@ -438,8 +484,8 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between mb-1">
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-gray-900 text-sm truncate">{item.title}</h4>
-                              <p className="text-xs text-gray-600 truncate">{item.donorName}</p>
+                              <h4 className="font-medium text-gray-900 text-sm truncate break-words whitespace-pre-wrap flex-1 min-w-0">{item.title}</h4>
+                              <p className="text-xs text-gray-600 truncate break-words whitespace-pre-wrap flex-1 min-w-0">{item.donorName}</p>
                             </div>
                             <div className="flex items-center text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
                               <Star className="w-3 h-3 mr-1 fill-current text-yellow-500" />
@@ -484,6 +530,24 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
               </CardContent>
             </Card>
           </>
+        ) : (
+          // Add this empty state for volunteers when no food is available
+          <Card className="shadow-lg border-0 rounded-xl">
+            <CardContent className="p-6 text-center">
+              <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl">👀</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Looking for Food</h3>
+              <p className="text-sm text-muted-foreground mb-3">
+                We're currently searching for food donations in your area.
+              </p>
+              <div className="bg-blue-50 rounded-lg p-3 mb-4">
+                <p className="text-xs text-blue-700">
+                  💡 <strong>Tip:</strong> Food donations often appear in the morning and evening
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Your Active Campaigns Section */}
@@ -517,8 +581,8 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between mb-1">
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-gray-900 text-sm truncate">{campaign.title}</h4>
-                            <p className="text-xs text-gray-600 truncate">{campaign.organizerOrg || campaign.organizerName}</p>
+                            <h4 className="font-medium text-gray-900 text-sm truncate break-words whitespace-pre-wrap flex-1 min-w-0">{campaign.title}</h4>
+                            <p className="text-xs text-gray-600 truncate break-words whitespace-pre-wrap flex-1 min-w-0">{campaign.organizerOrg || campaign.organizerName}</p>
                           </div>
                           <div className="flex items-center text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
                             <Star className="w-3 h-3 mr-1 fill-current text-yellow-500" />
@@ -527,15 +591,15 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                         </div>
                         
                         <div className="space-y-1 text-xs text-gray-500">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {formatCampaignDateTime(campaign)}
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3 flex-shrink-0" />
+                              {formatCampaignDate(campaign)}
+                            </div>
+                            <div className="flex items-start gap-1">
+                              <MapPin className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                              <span className="break-words whitespace-pre-wrap flex-1 min-w-0">{campaign.locationName}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {campaign.locationName}
-                          </div>
-                        </div>
                         
                         <div className="flex items-center justify-between mt-2">
                           <Badge variant="outline" className="text-xs">
@@ -559,18 +623,21 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
         {!locationLoading && recommendedFood.length === 0 && userCampaigns.length === 0 && (
           <Card className="shadow-lg border-0 rounded-xl">
             <CardContent className="p-6 text-center">
-              <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <h3 className="text-lg font-medium mb-2">No recommendations available</h3>
-              <p className="text-muted-foreground mb-4">
+              <div className="w-20 h-20 bg-gradient-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">🕵️‍♂️</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Mission: Food Finding</h3>
+              <p className="text-sm text-muted-foreground mb-3">
                 {userLocation 
-                  ? "No food pickups found near your location. Try refreshing or check back later."
-                  : "Enable location services to see personalized food recommendations near you."
+                  ? "Our food detectives are on the case! 🕵️‍♀️ Nothing to rescue in your area yet, but we're sniffing out new donations."
+                  : "Even Sherlock Holmes needs a location! 🔍 Enable location so we can find food mysteries near you."
                 }
               </p>
-              <Button onClick={handleRefresh} variant="outline">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh Recommendations
-              </Button>
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg p-4 border border-amber-200">
+                <p className="text-xs text-amber-700 font-medium">
+                  🍕 <strong>Pro Tip:</strong> Food donations are like ninjas - they appear when you least expect them!
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}
