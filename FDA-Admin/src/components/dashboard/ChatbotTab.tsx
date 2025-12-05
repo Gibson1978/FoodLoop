@@ -16,6 +16,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { aiService } from "../../services/aiServices";
+import { PDFService } from "../../services/pdfService";
 
 interface Message {
   id: string;
@@ -79,13 +80,18 @@ export function ChatbotTab() {
       };
 
       setMessages(prev => [...prev, botMessage]);
+
+      // Handle report generation
+      if (aiResponse.report) {
+        PDFService.generateSWCorpReport(aiResponse.report);
+      }
     } catch (error) {
       console.error('Error getting AI response:', error);
       
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "bot",
-        content: "❌ **I encountered an error processing your request**\n\nPlease try again in a moment, or check the dashboard for real-time metrics and reports.",
+        content: "❌ **I encountered an error processing your request**\n\nPlease try again in a moment, or check the dashboard for real-time metrics.",
         timestamp: new Date(),
         suggestions: ["Try again", "Check dashboard", "Contact support"]
       };

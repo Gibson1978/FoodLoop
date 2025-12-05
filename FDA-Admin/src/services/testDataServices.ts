@@ -1,6 +1,6 @@
-// services/testDataService.ts
+// services/testDataServices.ts
 import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions";
-import app from "../Firebase/Firebase";
+import app, { auth } from "../Firebase/Firebase";
 
 export interface TestDataConfig {
   usersCount: number;
@@ -8,6 +8,8 @@ export interface TestDataConfig {
   campaignsCount: number;
   pastMonths: number;
   futureDays: number;
+  phase?: 'users' | 'listings' | 'campaigns' | 'relationships' | 'all';
+  skipRelationships?: boolean;
 }
 
 export interface GenerateTestDataResponse {
@@ -22,6 +24,8 @@ export interface GenerateTestDataResponse {
     ratings: string[];
     reports: string[];
   };
+  phase?: string;
+  totalOperations?: number;
 }
 
 export interface CleanTestDataResponse {
@@ -40,9 +44,11 @@ class TestDataService {
 
   async generateTestData(config: TestDataConfig): Promise<GenerateTestDataResponse> {
     try {
+      // FIX: Added timeout option here
       const generateTestDataFunction = httpsCallable<TestDataConfig, GenerateTestDataResponse>(
         this.functions, 
-        'generateTestData'
+        'generateTestData',
+        { timeout: 540000 } // 9 minutes (matches server timeout)
       );
       
       console.log('Sending generate test data request with config:', config);
@@ -58,9 +64,11 @@ class TestDataService {
 
   async cleanTestData(): Promise<CleanTestDataResponse> {
     try {
+      // FIX: Added timeout option here as well, just in case cleaning takes time
       const cleanTestDataFunction = httpsCallable<unknown, CleanTestDataResponse>(
         this.functions, 
-        'cleanTestData'
+        'cleanTestData',
+        { timeout: 540000 } // 9 minutes
       );
       
       console.log('Sending clean test data request');
@@ -97,11 +105,33 @@ class TestDataService {
     } else if (error.code === 'internal') {
       return new Error(`Server error: ${error.message || 'Please check the function logs in Firebase Console'}`);
     } else if (error.code === 'deadline-exceeded') {
-      return new Error('Operation timed out: The operation took too long. Try with smaller data sets.');
+      return new Error('Operation timed out on the client. The server might still be processing. Check Firestore in a few minutes.');
     } else {
       return new Error(error.message || 'Unknown error occurred. Check console for details.');
     }
   }
+
+  // Add this to your testDataServices:
+  async generateRelationshipsOnly(): Promise<GenerateTestDataResponse> {
+    try {
+      const generateRelationshipsOnlyFunction = httpsCallable<unknown, GenerateTestDataResponse>(
+        this.functions, 
+        'generateRelationshipsOnly', // This matches the exported function name in your Cloud Functions
+        { timeout: 540000 } // 9 minutes
+      );
+      
+      console.log('Sending generate relationships only request');
+      const result: HttpsCallableResult<GenerateTestDataResponse> = await generateRelationshipsOnlyFunction({});
+      console.log('Generate relationships only response:', result.data);
+      
+      return result.data;
+    } catch (error: any) {
+      console.error('Error generating relationships:', error);
+      throw this.handleFirebaseError(error);
+    }
+  }
 }
+
+
 
 export const testDataService = new TestDataService();

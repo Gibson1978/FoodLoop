@@ -30,7 +30,7 @@ export interface Campaign {
   registeredSpots: number;
   availableSpots: number;
   images: string[];
-  status: 'pending' | 'ongoing' | 'completed' | 'cancelled';
+  status: 'pending' | 'approved' | 'completed' | 'cancelled';
   organizerId: string;
   organizerName: string;
   organizerEmail: string;
@@ -53,7 +53,7 @@ export interface Campaign {
 
 export const CAMPAIGN_STATUS = {
   PENDING: 'pending',
-  ONGOING: 'ongoing',
+  APPROVED: 'approved',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled'
 } as const;

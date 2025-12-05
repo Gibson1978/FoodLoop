@@ -822,3 +822,5 @@ const getAuthErrorMessage = (errorCode: string): string => {
       return 'An unexpected error occurred. Please try again.';
   }
 };
+
+export { Unsubscribe };

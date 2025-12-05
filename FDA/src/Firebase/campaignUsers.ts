@@ -33,7 +33,7 @@ export interface Campaign {
   registeredSpots: number;
   availableSpots: number;
   images: string[];
-  status: 'pending' | 'ongoing' | 'completed' | 'cancelled';
+  status: 'pending' | 'approved' | 'completed' | 'cancelled';
   organizerId: string;
   organizerName: string;
   organizerEmail: string;
@@ -51,7 +51,7 @@ export interface Campaign {
 
 export const CAMPAIGN_STATUS = {
   PENDING: 'pending',
-  ONGOING: 'ongoing',
+  APPROVED: 'approved',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled'
 } as const;
@@ -77,7 +77,7 @@ export const getActiveCampaigns = (
   try {
     const q = query(
       collection(db, 'campaigns'),
-      where('status', '==', CAMPAIGN_STATUS.ONGOING),
+      where('status', '==', CAMPAIGN_STATUS.APPROVED),
       orderBy('campaignDate', 'asc')
     );
 
@@ -225,7 +225,7 @@ export const getActiveCampaignsOnce = async (): Promise<{success: boolean; data?
   try {
     const q = query(
       collection(db, 'campaigns'),
-      where('status', '==', CAMPAIGN_STATUS.ONGOING),
+      where('status', '==', CAMPAIGN_STATUS.APPROVED),
       orderBy('campaignDate', 'asc')
     );
 
@@ -548,7 +548,7 @@ export const registerForCampaign = async (campaignId: string): Promise<{success:
     const campaignData = campaignDoc.data() as Campaign;
     
     // Check if campaign is active
-    if (campaignData.status !== CAMPAIGN_STATUS.ONGOING) {
+    if (campaignData.status !== CAMPAIGN_STATUS.APPROVED) {
       return { success: false, error: 'Campaign is not active for registration' };
     }
 
@@ -614,7 +614,7 @@ export const getCampaignsByCategory = async (category: string): Promise<{success
     const q = query(
       collection(db, 'campaigns'),
       where('category', '==', category),
-      where('status', '==', CAMPAIGN_STATUS.ONGOING),
+      where('status', '==', CAMPAIGN_STATUS.APPROVED),
       orderBy('campaignDate', 'asc')
     );
 
@@ -682,7 +682,7 @@ export const getDashboardCampaigns = (
   try {
     const q = query(
       collection(db, 'campaigns'),
-      where('status', '==', CAMPAIGN_STATUS.ONGOING),
+      where('status', '==', CAMPAIGN_STATUS.APPROVED),
       orderBy('campaignDate', 'asc')
     );
 

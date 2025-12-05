@@ -86,7 +86,8 @@ const FOOD_STATUS_CONFIG = {
   [FOOD_STATUS.PENDING]: { variant: "secondary", className: "bg-yellow-100 text-yellow-700", label: "Pending" },
   [FOOD_STATUS.APPROVED]: { variant: "secondary", className: "bg-green-100 text-green-700", label: "Approved" },
   [FOOD_STATUS.REJECTED]: { variant: "secondary", className: "bg-red-100 text-red-700", label: "Rejected" },
-  [FOOD_STATUS.COMPLETED]: { variant: "secondary", className: "bg-gray-100 text-gray-700", label: "Completed" }
+  [FOOD_STATUS.COMPLETED]: { variant: "secondary", className: "bg-gray-100 text-gray-700", label: "Completed" },
+  [FOOD_STATUS.CANCELLED]: { variant: "secondary", className: "bg-red-100 text-red-700", label: "Cancelled" }
 };
 
 const FOOD_CATEGORY_CONFIG = {
@@ -95,9 +96,10 @@ const FOOD_CATEGORY_CONFIG = {
   'Shelf Stable': { className: "bg-purple-100 text-purple-700", label: "Shelf Stable" }
 };
 
+// ADD APPROVED TO CAMPAIGN STATUS
 const CAMPAIGN_STATUS_CONFIG = {
   [CAMPAIGN_STATUS.PENDING]: { variant: "secondary", className: "bg-yellow-100 text-yellow-700", label: "Pending" },
-  [CAMPAIGN_STATUS.ONGOING]: { variant: "secondary", className: "bg-green-100 text-green-700", label: "Ongoing" },
+  [CAMPAIGN_STATUS.APPROVED]: { variant: "secondary", className: "bg-blue-100 text-blue-700", label: "Approved" }, 
   [CAMPAIGN_STATUS.COMPLETED]: { variant: "secondary", className: "bg-gray-100 text-gray-700", label: "Completed" },
   [CAMPAIGN_STATUS.CANCELLED]: { variant: "secondary", className: "bg-red-100 text-red-700", label: "Cancelled" }
 };
@@ -110,7 +112,7 @@ const CAMPAIGN_CATEGORY_CONFIG = {
 
 // Type definitions for actions
 type UserAction = "suspend" | "activate" | "restore" | "delete" | "approve" | "reject";
-type FoodAction = "approve" | "reject" | "delete" | "complete";
+type FoodAction = "approve" | "reject" | "delete" | "complete" | "cancel";
 type CampaignAction = "approve" | "reject" | "delete" | "complete" | "cancel" | "activate";
 
 // Reusable Components
@@ -589,6 +591,7 @@ const FoodCard = ({
   const isPendingAndExpired = listing.status === FOOD_STATUS.PENDING && isExpired;
   const isApprovedAndShouldComplete = listing.status === FOOD_STATUS.APPROVED && (isExpired || isOutOfStock);
   const isCancelled = listing.status === FOOD_STATUS.CANCELLED;
+  const isApproved = listing.status === FOOD_STATUS.APPROVED; // ADDED
 
   return (
     <div className={`border rounded-lg p-4 bg-white ${
@@ -799,7 +802,25 @@ const FoodCard = ({
                   </>
                 )}
 
-                {(listing.status === FOOD_STATUS.APPROVED || listing.status === FOOD_STATUS.REJECTED || listing.status === FOOD_STATUS.COMPLETED) && (
+                {/* ADD CANCEL BUTTON FOR APPROVED ITEMS */}
+                {isApproved && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="text-orange-600 border-orange-600 hover:bg-orange-50"
+                    onClick={() => onAction(listing.id!, "cancel", "Cancelled by admin")}
+                    disabled={actionLoading === listing.id}
+                  >
+                    {actionLoading === listing.id ? (
+                      <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <XCircle className="h-3 w-3 mr-1" />
+                    )}
+                    Cancel Listing
+                  </Button>
+                )}
+
+                {(listing.status === FOOD_STATUS.APPROVED || listing.status === FOOD_STATUS.REJECTED || listing.status === FOOD_STATUS.COMPLETED || listing.status === FOOD_STATUS.CANCELLED) && (
                   <Button 
                     variant="destructive" 
                     size="sm"
@@ -896,12 +917,14 @@ const CampaignCard = ({
   const isExpired = endDateTime < now;
   const isAlmostExpired = endDateTime < new Date(now.getTime() + 24 * 60 * 60 * 1000);
   
-  const isOngoingAndExpired = campaign.status === CAMPAIGN_STATUS.ONGOING && isExpired;
+  // CHANGED: Use APPROVED instead of ONGOING
+  const isApprovedAndExpired = campaign.status === CAMPAIGN_STATUS.APPROVED && isExpired;
   const isCancelled = campaign.status === CAMPAIGN_STATUS.CANCELLED;
+  const isApproved = campaign.status === CAMPAIGN_STATUS.APPROVED; // This is correct
 
   return (
     <div className={`border rounded-lg p-4 bg-white ${
-      isOngoingAndExpired ? 'border-orange-200 bg-orange-50' : 
+      isApprovedAndExpired ? 'border-orange-200 bg-orange-50' : 
       isCancelled ? 'border-gray-200 bg-gray-50' : 'border-gray-200'
     }`}>
       <div className="flex items-start gap-4">
@@ -914,13 +937,15 @@ const CampaignCard = ({
           </div>
 
           <div className="flex flex-wrap gap-1">
-            {isOngoingAndExpired && (
+            {/* CHANGED: Updated label */}
+            {isApprovedAndExpired && (
               <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300 text-xs">
                 <Clock className="h-3 w-3 mr-1" />
                 Expired - Will Auto-Complete
               </Badge>
             )}
-            {isAlmostExpired && campaign.status === CAMPAIGN_STATUS.ONGOING && !isExpired && (
+            {/* CHANGED: Check for APPROVED status */}
+            {isAlmostExpired && campaign.status === CAMPAIGN_STATUS.APPROVED && !isExpired && (
               <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300 text-xs">
                 <Clock className="h-3 w-3 mr-1" />
                 Ending Soon
@@ -1029,103 +1054,102 @@ const CampaignCard = ({
               </div>
 
               <div className="flex flex-col gap-2">
-                {campaign.images && campaign.images.length > 0 && (
+              {campaign.images && campaign.images.length > 0 && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                  onClick={() => setShowImages(!showImages)}
+                >
+                  <Eye className="h-3 w-3 mr-1" />
+                  {showImages ? 'Hide' : 'View'} ({campaign.images.length})
+                </Button>
+              )}
+
+              {campaign.status === CAMPAIGN_STATUS.PENDING && (
+                <>
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="text-blue-600 border-blue-600 hover:bg-blue-50"
-                    onClick={() => setShowImages(!showImages)}
-                  >
-                    <Eye className="h-3 w-3 mr-1" />
-                    {showImages ? 'Hide' : 'View'} ({campaign.images.length})
-                  </Button>
-                )}
-
-                {campaign.status === CAMPAIGN_STATUS.PENDING && (
-                  <>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-green-600 border-green-600 hover:bg-green-50"
-                      onClick={() => onAction(campaign.id!, "approve")}
-                      disabled={actionLoading === campaign.id}
-                    >
-                      {actionLoading === campaign.id ? (
-                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                      ) : (
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                      )}
-                      Approve
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-red-600 border-red-600 hover:bg-red-50"
-                      onClick={() => onAction(campaign.id!, "reject", "Rejected by admin")}
-                      disabled={actionLoading === campaign.id}
-                    >
-                      {actionLoading === campaign.id ? (
-                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                      ) : (
-                        <XCircle className="h-3 w-3 mr-1" />
-                      )}
-                      Reject
-                    </Button>
-                  </>
-                )}
-
-                {campaign.status === CAMPAIGN_STATUS.ONGOING && (
-                  <>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-orange-600 border-orange-600 hover:bg-orange-50"
-                      onClick={() => onAction(campaign.id!, "cancel", "Cancelled by admin")}
-                      disabled={actionLoading === campaign.id}
-                    >
-                      {actionLoading === campaign.id ? (
-                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                      ) : (
-                        <XCircle className="h-3 w-3 mr-1" />
-                      )}
-                      Cancel
-                    </Button>
-                  </>
-                )}
-
-                {campaign.status === CAMPAIGN_STATUS.COMPLETED && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-blue-600 border-blue-600 hover:bg-blue-50"
-                    onClick={() => onAction(campaign.id!, "activate")}
+                    className="text-green-600 border-green-600 hover:bg-green-50"
+                    onClick={() => onAction(campaign.id!, "approve")}
                     disabled={actionLoading === campaign.id}
                   >
                     {actionLoading === campaign.id ? (
                       <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
                     ) : (
-                      <UserCheck className="h-3 w-3 mr-1" />
+                      <CheckCircle className="h-3 w-3 mr-1" />
                     )}
-                    Reactivate
+                    Approve
                   </Button>
-                )}
-
-                {(campaign.status === CAMPAIGN_STATUS.CANCELLED || campaign.status === CAMPAIGN_STATUS.COMPLETED) && (
                   <Button 
-                    variant="destructive" 
-                    size="sm"
-                    onClick={() => onAction(campaign.id!, "delete")}
+                    variant="outline" 
+                    size="sm" 
+                    className="text-red-600 border-red-600 hover:bg-red-50"
+                    onClick={() => onAction(campaign.id!, "reject", "Rejected by admin")}
                     disabled={actionLoading === campaign.id}
                   >
                     {actionLoading === campaign.id ? (
                       <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
                     ) : (
-                      <Trash2 className="h-3 w-3 mr-1" />
+                      <XCircle className="h-3 w-3 mr-1" />
                     )}
-                    Remove
+                    Reject
                   </Button>
-                )}
-              </div>
+                </>
+              )}
+
+              {/* FIXED: Only show Cancel for APPROVED campaigns, not "ongoing" */}
+              {isApproved && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-orange-600 border-orange-600 hover:bg-orange-50"
+                  onClick={() => onAction(campaign.id!, "cancel", "Cancelled by admin")}
+                  disabled={actionLoading === campaign.id}
+                >
+                  {actionLoading === campaign.id ? (
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <XCircle className="h-3 w-3 mr-1" />
+                  )}
+                  Cancel Event
+                </Button>
+              )}
+
+              {campaign.status === CAMPAIGN_STATUS.COMPLETED && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                  onClick={() => onAction(campaign.id!, "activate")}
+                  disabled={actionLoading === campaign.id}
+                >
+                  {actionLoading === campaign.id ? (
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <UserCheck className="h-3 w-3 mr-1" />
+                  )}
+                  Reactivate
+                </Button>
+              )}
+
+              {(campaign.status === CAMPAIGN_STATUS.CANCELLED || campaign.status === CAMPAIGN_STATUS.COMPLETED) && (
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={() => onAction(campaign.id!, "delete")}
+                  disabled={actionLoading === campaign.id}
+                >
+                  {actionLoading === campaign.id ? (
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3 w-3 mr-1" />
+                  )}
+                  Remove
+                </Button>
+              )}
+            </div>
             </div>
           </div>
 
@@ -1189,7 +1213,7 @@ export function SystemControlsTab() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Refs for unsubscribe functions - UPDATED TO INCLUDE USER LISTENERS
+  // Refs for unsubscribe functions
   const unsubscribeRefs = useRef<{
     campaigns?: CampaignUnsubscribe;
     foodListings?: FoodUnsubscribe;
@@ -1210,7 +1234,7 @@ export function SystemControlsTab() {
     }
   }, [activeTab, isAdmin]);
 
-  // Cleanup subscriptions on unmount - UPDATED TO INCLUDE USER LISTENERS
+  // Cleanup subscriptions on unmount
   useEffect(() => {
     return () => {
       if (unsubscribeRefs.current.campaigns) {
@@ -1244,7 +1268,6 @@ export function SystemControlsTab() {
     }
   };
 
-  // UPDATED LOAD TAB DATA WITH REAL-TIME USER LISTENERS
   const loadTabData = useCallback(async () => {
     if (!isAdmin) return;
     
@@ -1298,7 +1321,6 @@ export function SystemControlsTab() {
     }
   }, [activeTab, isAdmin]);
 
-  // NEW REAL-TIME SETUP FUNCTIONS FOR USERS
   const setupPendingUsersRealtime = useCallback(() => {
     return new Promise<void>((resolve) => {
       unsubscribeRefs.current.pendingUsers = subscribeToPendingRegistrations(
@@ -1354,7 +1376,6 @@ export function SystemControlsTab() {
     });
   }, []);
 
-  // EXISTING REAL-TIME SETUP FUNCTIONS FOR CAMPAIGNS AND FOOD LISTINGS
   const setupCampaignsRealtime = useCallback(() => {
     return new Promise<void>((resolve) => {
       unsubscribeRefs.current.campaigns = getAllCampaigns(
@@ -1389,7 +1410,7 @@ export function SystemControlsTab() {
     });
   }, []);
 
-  // Action handlers - UPDATED TO REMOVE MANUAL RELOADING
+  // Action handlers
   const handleRegistrationAction = async (userId: string, action: "approve" | "reject") => {
     if (!isAdmin) return;
     
@@ -1402,7 +1423,6 @@ export function SystemControlsTab() {
         : await rejectUserRegistration(userId);
       
       if (result?.success) {
-        // No need to manually reload - real-time listeners will handle updates
         console.log(`User ${action}d successfully`);
       } else {
         setError(result?.error || `Failed to ${action} registration`);
@@ -1442,7 +1462,6 @@ export function SystemControlsTab() {
       }
       
       if (result?.success) {
-        // No need to manually reload - real-time listeners will handle updates
         console.log(`User ${action}d successfully`);
       } else {
         setError(result?.error || `Failed to ${action} user`);
@@ -1476,12 +1495,15 @@ export function SystemControlsTab() {
         case "complete":
           result = await markListingAsCompleted(listingId);
           break;
+        case "cancel":
+          // For food listings, cancel maps to reject with cancellation reason
+          result = await rejectFoodListing(listingId, reason || "Cancelled by admin");
+          break;
         default:
           throw new Error(`Unknown food action: ${action}`);
       }
       
       if (result?.success) {
-        // No need to manually reload - real-time will handle it
         console.log(`Food listing ${action}d successfully`);
       } else {
         setError(result?.error || `Failed to ${action} food listing`);
@@ -1519,14 +1541,13 @@ export function SystemControlsTab() {
           result = await updateCampaignStatus(campaignId, CAMPAIGN_STATUS.CANCELLED);
           break;
         case "activate":
-          result = await updateCampaignStatus(campaignId, CAMPAIGN_STATUS.ONGOING);
+          result = await updateCampaignStatus(campaignId, CAMPAIGN_STATUS.APPROVED);
           break;
         default:
           throw new Error(`Unknown campaign action: ${action}`);
       }
       
       if (result?.success) {
-        // No need to manually reload - real-time will handle it
         console.log(`Campaign ${action}d successfully`);
       } else {
         setError(result?.error || `Failed to ${action} campaign`);
@@ -1634,13 +1655,15 @@ export function SystemControlsTab() {
     pending: allFoodListings.filter(l => l.status === FOOD_STATUS.PENDING).length,
     approved: allFoodListings.filter(l => l.status === FOOD_STATUS.APPROVED).length,
     rejected: allFoodListings.filter(l => l.status === FOOD_STATUS.REJECTED).length,
-    completed: allFoodListings.filter(l => l.status === FOOD_STATUS.COMPLETED).length
+    completed: allFoodListings.filter(l => l.status === FOOD_STATUS.COMPLETED).length,
+    cancelled: allFoodListings.filter(l => l.status === FOOD_STATUS.CANCELLED).length
   };
 
+  // UPDATE THE CAMPAIGN COUNTS OBJECT
   const campaignCounts = {
     total: allCampaigns.length,
     pending: allCampaigns.filter(c => c.status === CAMPAIGN_STATUS.PENDING).length,
-    ongoing: allCampaigns.filter(c => c.status === CAMPAIGN_STATUS.ONGOING).length,
+    approved: allCampaigns.filter(c => c.status === CAMPAIGN_STATUS.APPROVED).length, // ADDED
     completed: allCampaigns.filter(c => c.status === CAMPAIGN_STATUS.COMPLETED).length,
     cancelled: allCampaigns.filter(c => c.status === CAMPAIGN_STATUS.CANCELLED).length
   };
@@ -1837,10 +1860,11 @@ export function SystemControlsTab() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground">Status:</span>
                     <div className="flex gap-2">
+                      {/* UPDATE THE FILTER BUTTONS FOR CAMPAIGNS */}
                       {[
                         { value: "all", label: `All (${campaignCounts.total})` },
                         { value: CAMPAIGN_STATUS.PENDING, label: `Pending (${campaignCounts.pending})` },
-                        { value: CAMPAIGN_STATUS.ONGOING, label: `Ongoing (${campaignCounts.ongoing})` },
+                        { value: CAMPAIGN_STATUS.APPROVED, label: `Approved (${campaignCounts.approved})` }, // ADDED
                         { value: CAMPAIGN_STATUS.COMPLETED, label: `Completed (${campaignCounts.completed})` },
                         { value: CAMPAIGN_STATUS.CANCELLED, label: `Cancelled (${campaignCounts.cancelled})` }
                       ].map(({ value, label }) => (
@@ -1912,7 +1936,8 @@ export function SystemControlsTab() {
                         { value: FOOD_STATUS.PENDING, label: `Pending (${foodCounts.pending})` },
                         { value: FOOD_STATUS.APPROVED, label: `Approved (${foodCounts.approved})` },
                         { value: FOOD_STATUS.REJECTED, label: `Rejected (${foodCounts.rejected})` },
-                        { value: FOOD_STATUS.COMPLETED, label: `Completed (${foodCounts.completed})` }
+                        { value: FOOD_STATUS.COMPLETED, label: `Completed (${foodCounts.completed})` },
+                        { value: FOOD_STATUS.CANCELLED, label: `Cancelled (${foodCounts.cancelled})` }
                       ].map(({ value, label }) => (
                         <Button
                           key={value}

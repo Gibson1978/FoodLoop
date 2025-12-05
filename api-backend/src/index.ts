@@ -26,15 +26,16 @@ export {
 export {foodStatusManager} from "./foodStatusManager";
 export {campaignStatusManager} from "./campaignStatusManager";
 export {geocodeAddress} from "./geocodeAddress";
-export {updateRatingStats} from "./ratingAggregator";
+export {updateRatingStats} from "./MetricsCalcFolder/ratingAggregator";
 export {
   onFoodListingUpdated,
   onCampaignUpdated,
   onReservationCompleted,
   onCampaignRegistrationAttended,
-} from "./metricsTrigger"
+} from "./MetricsCalcFolder/metricsTrigger"
 export{
   dailyMetricsRecalculation,
-} from "./dailyMetricRecalculation";
-export { generateTestData } from './generateTestData';
-export { cleanTestData } from './cleanTestData';
+} from "./MetricsCalcFolder/dailyMetricRecalculation";
+export { generateTestData, generateRelationshipsOnly  } from './TestDataFolder/generateTestData'
+export { cleanTestData } from './TestDataFolder/cleanTestData';
+export { calculateAnalytics, calculateAnalyticsManual} from './analyticsCalculator'

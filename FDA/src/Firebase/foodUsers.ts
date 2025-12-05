@@ -35,7 +35,7 @@ export interface FoodListing {
   startTime: string;
   endTime: string;
   images: string[];
-  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'cancelled';
+  status: 'pending' | 'approved' | 'completed' | 'cancelled';
   donorId: string;
   donorName: string; 
   donorEmail: string;
@@ -76,7 +76,6 @@ export interface FoodListingInput {
 export const FOOD_STATUS = {
   PENDING: 'pending',
   APPROVED: 'approved',
-  REJECTED: 'rejected',
   CANCELLED: 'cancelled',
   COMPLETED: 'completed'
 } as const;
