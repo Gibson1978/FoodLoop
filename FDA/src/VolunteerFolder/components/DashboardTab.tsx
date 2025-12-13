@@ -1,3 +1,4 @@
+// DashboardTab.tsx
 import { Card, CardContent, CardHeader, CardTitle } from "../../UnifiedFolder/ui/card";
 import { Button } from "../../UnifiedFolder/ui/button";
 import { Badge } from "../../UnifiedFolder/ui/badge";
@@ -15,7 +16,9 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Package,
+  Plus
 } from "lucide-react";
 import { SustainabilityTipCard } from "../../UnifiedFolder/ui/SustainabilityTip";
 import { getCurrentUserData, type UserData } from "../../Firebase/auth";
@@ -31,11 +34,51 @@ interface DashboardProps {
    onNavigate: (tab: string, itemId?: string) => void;
 }
 
+// Helper function definitions (moved here to resolve 'Cannot find name' errors)
+const formatDate = (dateString: string | Date) => {
+  if (!dateString) return 'N/A';
+  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+};
+
+const formatCampaignTimeDisplay = (campaign: Campaign) => {
+    if (campaign.campaignDate && campaign.startTime && campaign.endTime) {
+      const dateText = new Date(campaign.campaignDate).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
+      return {
+        date: dateText,
+        time: `${campaign.startTime} - ${campaign.endTime}`
+      };
+    }
+    return { date: "Check availability", time: "" };
+  };
+
+const formatFoodTimeDisplay = (item: FoodListing) => {
+  if (item.availableDate && item.startTime && item.endTime) {
+    const dateText = new Date(item.availableDate).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
+    });
+    return {
+      date: dateText,
+      time: `${item.startTime} - ${item.endTime}`
+    };
+  }
+  return { date: "Check availability", time: "" };
+};
+
+
 export function DashboardTab({ onNavigate }: DashboardProps) {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [userMetrics, setUserMetrics] = useState<UserMetrics | null>(null);
   const [recommendedFood, setRecommendedFood] = useState<FoodListing[]>([]);
-  const [userCampaigns, setUserCampaigns] = useState<Campaign[]>([]);
+  const [activeCampaigns, setActiveCampaigns] = useState<Campaign[]>([]); 
   const [userReservations, setUserReservations] = useState<FoodReservation[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -71,7 +114,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
     await refreshLocation();
   };
 
-   const { 
+  const { 
     refreshing, 
     pullDistance, 
     onTouchStart, 
@@ -113,6 +156,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
   useEffect(() => {
     if (!userData) return;
 
+    // Listener for Recommended Food (for collection)
     const unsubscribeFood = getApprovedFoodListings(
       (listings) => {
         // Only process if we have location or location is loading
@@ -132,14 +176,14 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
       }
     );
 
-    // Campaigns listener remains the same (shows volunteer's own campaigns)
+    // Campaigns listener (shows volunteer's own active campaigns: status == 'approved')
     const unsubscribeCampaigns = getUserCampaigns(
       (campaigns) => {
         const activeCampaigns = campaigns.filter(campaign => 
-          campaign.status === 'ongoing' && campaign.organizerId === userData.uid
+          campaign.status === 'approved' // Filter for 'approved' status (active for volunteers)
         );
         
-        setUserCampaigns(activeCampaigns);
+        setActiveCampaigns(activeCampaigns);
         setLoading(false);
       },
       (error) => {
@@ -174,10 +218,8 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
   const getDisplayName = () => {
     if (!userData) return 'Volunteer';
     
-    if (userData.role === 'receiver') {
-      return userData.profile?.name || userData.email || 'Volunteer';
-    }
-    return userData.profile?.orgName || userData.profile?.contactPerson || userData.email || 'Organization';
+    // Assuming this component is used only for Donor/Volunteer roles (i.e., not the receiver's HomeScreen)
+    return userData?.profile?.orgName || userData?.profile?.contactPerson || userData?.email || 'Organization';
   };
 
   const [currentFoodSlide, setCurrentFoodSlide] = useState(0);
@@ -198,35 +240,11 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
   const prevFoodSlide = () => {
     setCurrentFoodSlide((prev) => (prev - 1 + recommendedFood.length) % recommendedFood.length);
   };
-
-  const formatFoodTimeDisplay = (item: FoodListing) => {
-    if (item.availableDate && item.startTime && item.endTime) {
-      const dateText = new Date(item.availableDate).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric'
-      });
-      return (
-        <div className="flex flex-col">
-          <span>{dateText}</span>
-          <span className="text-gray-400 text-xs">{item.startTime} - {item.endTime}</span>
-        </div>
-      );
-    }
-    return "Check availability";
-  };
-
-  const formatCampaignDate = (campaign: Campaign) => {
-    return campaign.campaignDate ? new Date(campaign.campaignDate).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric'
-    }) : "Date not set";
-  };
-
-  const formatCampaignDateTime = (campaign: Campaign) => {
-    if (campaign.campaignDate && campaign.startTime && campaign.endTime) {
-      return `${formatCampaignDate(campaign)} • ${campaign.startTime} - ${campaign.endTime}`;
-    }
-    return "Check schedule";
+  
+  // The function that correctly calls the parent's onNavigate prop
+  const handleViewCampaignDetails = (campaignId: string) => {
+    // Navigate to the 'campaigns' tab and pass the campaign ID as the itemId
+    onNavigate('campaigns', campaignId);
   };
 
   if (loading) {
@@ -249,7 +267,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
     {/* Pull to refresh indicator */}
     {refreshing && (
       <div className="fixed top-0 left-0 right-0 flex justify-center pt-4 z-50">
-        <div className="bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg flex items-center gap-2">
+        <div className="bg-white/90 rounded-full px-4 py-2 shadow-lg flex items-center gap-2">
           <RefreshCw className="w-4 h-4 animate-spin text-green-600" />
           <span className="text-sm text-green-600">Refreshing...</span>
         </div>
@@ -262,9 +280,9 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
             <h1 className="text-xl text-white">{getGreeting()}, {displayName}!</h1>
             <p className="text-green-100 mt-1 text-sm">Ready to help your community today?</p>
           </div>
-            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-              <Leaf className="w-5 h-5 text-white" />
-            </div>
+          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+            <Leaf className="w-5 h-5 text-white" />
+          </div>
         </div>
       </div>
 
@@ -309,7 +327,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
               <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-1">
                 <Calendar className="w-3 h-3 text-green-600" />
               </div>
-              <div className="text-base font-medium text-green-600">{userCampaigns.length}</div>
+              <div className="text-base font-medium text-green-600">{activeCampaigns.length}</div>
               <div className="text-xs text-muted-foreground">Active Campaigns</div>
             </CardContent>
           </Card>
@@ -347,6 +365,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                 <Star className="w-3 h-3 text-yellow-500" />
               </div>
               <div className="text-base font-medium text-yellow-500">
+                {/* FIX RATING: Use simplified check */}
                 {userMetrics?.volunteer?.rating ? userMetrics.volunteer.rating.toFixed(1) : '0.0'}
               </div>
               <div className="text-xs text-muted-foreground">Rating</div>
@@ -369,7 +388,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
           <>
             {/* Food Slider */}
             <Card className="shadow-lg border-0 rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">Available Food Pickups</CardTitle>
                 <Button 
                   variant="ghost" 
@@ -403,10 +422,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                             <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
-                                  <h4 className="font-medium text-sm stroke-text">{item.title}</h4>
-                                  <p className="text-xs text-gray-200 mt-1">
-                                    {item.donorName} • {item.rating ? `${item.rating.toFixed(1)} ⭐` : 'New'}
-                                  </p>
+                                  <h4 className="font-medium text-sm stroke-text truncate">{item.title}</h4>
                                 </div>
                               </div>
                             </div>
@@ -456,7 +472,7 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
 
             {/* Food List */}
             <Card className="shadow-lg border-0 rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">Quick Pickups</CardTitle>
                 <Button 
                   variant="ghost" 
@@ -468,65 +484,71 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                 </Button>
               </CardHeader>
               <CardContent className="space-y-3">
-                {recommendedFood.map((item) => (
-                  <Card 
-                    key={item.id} 
-                    className="shadow-sm border-0 hover:shadow-md transition-shadow cursor-pointer rounded-lg"
-                    onClick={() => onNavigate('browse', item.id!)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex gap-3">
-                        <ImageWithFallback
-                          src={item.images?.[0] || '/placeholder-food.jpg'}
-                          alt={item.title}
-                          className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between mb-1">
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-gray-900 text-sm truncate break-words whitespace-pre-wrap flex-1 min-w-0">{item.title}</h4>
-                              <p className="text-xs text-gray-600 truncate break-words whitespace-pre-wrap flex-1 min-w-0">{item.donorName}</p>
+                {recommendedFood.map((item) => {
+                  const foodTime = formatFoodTimeDisplay(item);
+                  return (
+                    <Card 
+                      key={item.id} 
+                      className="shadow-sm border-0 hover:shadow-md transition-shadow cursor-pointer rounded-lg"
+                      onClick={() => onNavigate('browse', item.id!)}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex gap-3">
+                          <ImageWithFallback
+                            src={item.images?.[0] || '/placeholder-food.jpg'}
+                            alt={item.title}
+                            className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between mb-1">
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-gray-900 text-sm truncate">{item.title}</h4>
+                                <p className="text-xs text-gray-600 truncate">{item.donorName}</p>
+                              </div>
+                              <div className="flex items-center text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
+                                <Star className="w-3 h-3 mr-1 fill-current text-yellow-500" />
+                                {/* FIX RATING: Use simplified check */}
+                                {(item.rating && item.rating > 0) ? item.rating.toFixed(1) : 'New'}
+                              </div>
                             </div>
-                            <div className="flex items-center text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
-                              <Star className="w-3 h-3 mr-1 fill-current text-yellow-500" />
-                              {item.rating?.toFixed(1) || 'New'}
+                            
+                            <div className="space-y-1 text-xs text-gray-500 ">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                <span className="mr-2">{foodTime.date}</span>
+                                <Clock className="h-3 w-3" />
+                                <span>{foodTime.time}</span>
+                              </span>
+                              <span className="text-green-600 font-medium">
+                                {item.remainingQuantity} {item.quantityUnit} left
+                              </span>
                             </div>
-                          </div>
-                          
-                          <div className="space-y-1 text-xs text-gray-500">
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {formatFoodTimeDisplay(item)}
-                            </span>
-                            <span className="text-green-600 font-medium">
-                              {item.remainingQuantity} {item.quantityUnit} left
-                            </span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <div className="flex flex-wrap gap-1">
-                              <Badge 
-                                variant="secondary" 
-                                className="text-xs px-2 py-0 bg-gray-100"
-                              >
-                                {item.category}
-                              </Badge>
-                              {item.tags?.slice(0, 2).map((tag, index) => (
+                            
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-wrap gap-1">
                                 <Badge 
-                                  key={index} 
                                   variant="secondary" 
                                   className="text-xs px-2 py-0 bg-gray-100"
                                 >
-                                  {tag}
+                                  {item.category}
                                 </Badge>
-                              ))}
+                                {item.tags?.slice(0, 2).map((tag, index) => (
+                                  <Badge 
+                                    key={index} 
+                                    variant="secondary" 
+                                    className="text-xs px-2 py-0 bg-gray-100"
+                                  >
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </CardContent>
             </Card>
           </>
@@ -550,56 +572,65 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
           </Card>
         )}
 
-        {/* Your Active Campaigns Section */}
-        {userCampaigns.length > 0 && (
+        {/* Your Active Campaigns Section (Volunteer specific) */}
+        {activeCampaigns.length > 0 && (
           <Card className="shadow-lg border-0 rounded-xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Your Active Campaigns</CardTitle>
               <Button 
                 variant="ghost" 
                 size="sm"
-                onClick={() => onNavigate('campaigns')}
+                onClick={() => onNavigate('campaigns')} // View All Button
                 className="text-primary text-xs h-8"
               >
                 View All <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
-              {userCampaigns.map((campaign) => (
-                <Card 
-                  key={campaign.id} 
-                  className="shadow-sm border-0 hover:shadow-md transition-shadow cursor-pointer rounded-lg"
-                  onClick={() => onNavigate('campaigns')}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex gap-3">
-                      <ImageWithFallback
-                        src={campaign.images?.[0] || '/placeholder-campaign.jpg'}
-                        alt={campaign.title}
-                        className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
-                      />
+              {activeCampaigns.map((campaign) => {
+                const campaignTime = formatCampaignTimeDisplay(campaign);
+               
+                return (
+                  <div 
+                    key={campaign.id} 
+                    className="bg-gray-50 rounded-lg sm:rounded-xl p-3 sm:p-4 hover:shadow-md transition-shadow cursor-pointer" 
+                    onClick={() => campaign.id && handleViewCampaignDetails(campaign.id)} 
+                  >
+                    <div className="flex gap-3 sm:gap-4">
+                      <div className="flex-shrink-0">
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg overflow-hidden">
+                          <ImageWithFallback
+                            src={campaign.images?.[0] || '/placeholder-campaign.jpg'}
+                            alt={campaign.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      </div>
+                      
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between mb-1">
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-gray-900 text-sm truncate break-words whitespace-pre-wrap flex-1 min-w-0">{campaign.title}</h4>
-                            <p className="text-xs text-gray-600 truncate break-words whitespace-pre-wrap flex-1 min-w-0">{campaign.organizerOrg || campaign.organizerName}</p>
+                        <div className="flex items-start justify-between mb-1 sm:mb-2">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-gray-900 text-sm truncate">{campaign.title}</h4>
+                            <p className="text-xs text-gray-600 truncate">{campaign.organizerOrg || campaign.organizerName}</p>
                           </div>
                           <div className="flex items-center text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
                             <Star className="w-3 h-3 mr-1 fill-current text-yellow-500" />
-                            {campaign.rating?.toFixed(1) || 'New'}
+                            {campaign.rating ? campaign.rating.toFixed(1) : 'New'}
                           </div>
                         </div>
                         
                         <div className="space-y-1 text-xs text-gray-500">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3 flex-shrink-0" />
-                              {formatCampaignDate(campaign)}
-                            </div>
-                            <div className="flex items-start gap-1">
-                              <MapPin className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                              <span className="break-words whitespace-pre-wrap flex-1 min-w-0">{campaign.locationName}</span>
-                            </div>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-3 w-3 flex-shrink-0" />
+                            <span className="mr-2">{campaignTime.date}</span>
+                            <Clock className="h-3 w-3 flex-shrink-0" />
+                            <span>{campaignTime.time}</span>
                           </div>
+                          <div className="flex items-start gap-1">
+                            <MapPin className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                            <span className="truncate">{campaign.locationName}</span>
+                          </div>
+                        </div>
                         
                         <div className="flex items-center justify-between mt-2">
                           <Badge variant="outline" className="text-xs">
@@ -612,31 +643,32 @@ export function DashboardTab({ onNavigate }: DashboardProps) {
                         </div>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         )}
 
-        {/* Empty States */}
-        {!locationLoading && recommendedFood.length === 0 && userCampaigns.length === 0 && (
+        {/* Empty State when no recommendations */}
+        {!locationLoading && recommendedFood.length === 0 && activeCampaigns.length === 0 && (
           <Card className="shadow-lg border-0 rounded-xl">
             <CardContent className="p-6 text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-amber-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">🕵️‍♂️</span>
+              <div className="w-20 h-20 bg-gradient-to-br from-green-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">🌿</span>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Mission: Food Finding</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Volunteer Hub</h3>
               <p className="text-sm text-muted-foreground mb-3">
-                {userLocation 
-                  ? "Our food detectives are on the case! 🕵️‍♀️ Nothing to rescue in your area yet, but we're sniffing out new donations."
-                  : "Even Sherlock Holmes needs a location! 🔍 Enable location so we can find food mysteries near you."
-                }
+                No new pickups or active campaigns right now. Thank you for your continued service!
               </p>
-              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg p-4 border border-amber-200">
-                <p className="text-xs text-amber-700 font-medium">
-                  🍕 <strong>Pro Tip:</strong> Food donations are like ninjas - they appear when you least expect them!
-                </p>
+              <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-4 border border-green-200">
+                <Button 
+                  onClick={() => onNavigate('campaigns')} // Navigate to the Campaign List tab
+                  variant="outline" 
+                  className="bg-green-500 text-white hover:bg-green-600"
+                >
+                  Start a New Campaign
+                </Button>
               </div>
             </CardContent>
           </Card>

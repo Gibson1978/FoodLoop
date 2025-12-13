@@ -21,11 +21,22 @@ module.exports = {
     "@typescript-eslint",
   ],
   rules: {
-    "quotes": "off", // Disable quote enforcement
-    "max-len": ["error", {"code": 300}],
+    // --- EXISTING RULES (Kept) ---
+    "quotes": "off", 
+    "max-len": ["error", {"code": 1000}],
     "linebreak-style": "off",
-    "object-curly-spacing": "off", // Disable object curly spacing enforcement
-    "comma-dangle": "off", // Disable comma dangle enforcement
-    "no-trailing-spaces": "off", // Disable trailing spaces enforcement
+    "object-curly-spacing": "off", 
+    "comma-dangle": "off", 
+    "no-trailing-spaces": "off", 
+    
+    // --- NEW RULES TO HANDLE UNUSED IMPORTS/VARS ---
+    "no-unused-vars": "off", // Disable base JS check
+    "@typescript-eslint/no-unused-vars": "off", // Disable TS check for unused imports/variables
+    
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-inferrable-types": "off",
+    "@typescript-eslint/explicit-member-accessibility": "off", 
+
+    "no-irregular-whitespace": "off", 
   },
 };

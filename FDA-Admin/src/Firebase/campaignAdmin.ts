@@ -14,6 +14,7 @@ import {
   adminRejectCampaign,
   adminDeleteCampaign,
   adminUpdateCampaignStatus,
+  adminCancelCampaign,
 } from './campaignAdminService';
 
 export interface Campaign {
@@ -260,6 +261,27 @@ export const updateCampaignStatus = async (campaignId: string, status: CampaignS
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Failed to update campaign status' 
+    };
+  }
+};
+
+export const cancelCampaignAdmin = async (campaignId: string, reason: string): Promise<{success: boolean; error?: string}> => {
+  try {
+    const isAdmin = await isCurrentUserAdmin();
+    if (!isAdmin) {
+      return { 
+        success: false, 
+        error: 'Admin privileges required' 
+      };
+    }
+
+    const result = await adminCancelCampaign(campaignId, reason);
+    return { success: result.success, error: result.success ? undefined : result.message };
+  } catch (error) {
+    console.error('Error cancelling campaign:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to cancel campaign' 
     };
   }
 };

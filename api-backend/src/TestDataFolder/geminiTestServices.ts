@@ -2,7 +2,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as logger from "firebase-functions/logger";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
+const genAI = new GoogleGenerativeAI(process.env.APP_GEMINI_KEY as string);
 
 const responseCache = new Map<string, { response: string; timestamp: number }>();
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours cache
@@ -59,7 +59,7 @@ export class GeminiService {
         }
       }
 
-      if (!process.env.GEMINI_API_KEY) {
+      if (!process.env.APP_GEMINI_KEY) {
         logger.error("GEMINI_API_KEY is not set");
         throw new Error("API key not configured");
       }

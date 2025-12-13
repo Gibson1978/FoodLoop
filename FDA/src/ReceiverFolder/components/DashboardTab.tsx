@@ -58,7 +58,6 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
 
   const { 
     refreshing, 
-    pullDistance, 
     onTouchStart, 
     onTouchMove, 
     onTouchEnd 
@@ -118,7 +117,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
         try {
           // Filter out reserved food items
           const availableFood = filterReservedItems(listings, userReservations, []);
-          const topFoodListings = DashboardService.getTopDashboardItems(
+          const topFoodListings = DashboardService.getTopDashboardItemsEnhanced(
             availableFood,
             userLocation,
             3
@@ -143,7 +142,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
         try {
           // Filter out registered campaigns
           const availableCampaigns = filterReservedItems(campaigns, [], userRegistrations);
-          const topCampaigns = DashboardService.getTopDashboardItems(
+          const topCampaigns = DashboardService.getTopDashboardItemsEnhanced(
             availableCampaigns,
             userLocation,
             3
@@ -260,27 +259,34 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
     setCurrentCampaignSlide((prev) => (prev - 1 + recommendedCampaigns.length) % recommendedCampaigns.length);
   };
 
+  // FIX: Adapted formatFoodTimeDisplay for receiver dashboard list
   const formatFoodTimeDisplay = (item: FoodListing) => {
     if (item.availableDate && item.startTime && item.endTime) {
       const dateText = new Date(item.availableDate).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric'
       });
-      return (
-        <div className="flex flex-col">
-          <span>{dateText}</span>
-          <span className="text-gray-400 text-xs">{item.startTime} - {item.endTime}</span>
-        </div>
-      );
+      // Returns an object containing the date and time strings separately
+      return {
+        date: dateText,
+        time: `${item.startTime} - ${item.endTime}`
+      };
     }
-    return "Check availability";
+    return { date: "Check availability", time: "" };
   };
 
-  const formatCampaignDate = (campaign: Campaign) => {
-    return campaign.campaignDate ? new Date(campaign.campaignDate).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric'
-    }) : "Date not set";
+  const formatCampaignTimeDisplay = (campaign: Campaign) => {
+    if (campaign.campaignDate && campaign.startTime && campaign.endTime) {
+      const dateText = new Date(campaign.campaignDate).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
+      return {
+        date: dateText,
+        time: `${campaign.startTime} - ${campaign.endTime}`
+      };
+    }
+    return { date: "Check availability", time: "" };
   };
 
   // Handle food item click - navigate to browse tab and select the food
@@ -438,7 +444,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
           <>
             {/* Food Slider - Added View All button */}
             <Card className="shadow-lg border-0 rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardHeader className="flex flex-row items-center justify-between ">
                 <CardTitle className="text-base">
                   Recommended Food
                 </CardTitle>
@@ -524,7 +530,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
 
             {/* Food List */}
             <Card className="shadow-lg border-0 rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">Quick Browse</CardTitle>
                 <Button 
                   variant="ghost" 
@@ -536,65 +542,72 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
                 </Button>
               </CardHeader>
               <CardContent className="space-y-3">
-                {recommendedFood.map((item) => (
-                  <Card 
-                    key={item.id} 
-                    className="shadow-sm border-0 hover:shadow-md transition-shadow cursor-pointer rounded-lg"
-                    onClick={() => handleFoodItemClick(item.id!)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex gap-3">
-                        <ImageWithFallback
-                          src={item.images?.[0] || '/placeholder-food.jpg'}
-                          alt={item.title}
-                          className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between mb-1">
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-gray-900 text-sm truncate break-words whitespace-pre-wrap max-w-full">{item.title}</h4>
-                              <p className="text-xs text-gray-600 break-words whitespace-pre-wrap max-w-full">{item.donorName}</p>
+                {recommendedFood.map((item) => {
+                  const foodTime = formatFoodTimeDisplay(item);
+                  return (
+                    <Card 
+                      key={item.id} 
+                      className="shadow-sm border-0 hover:shadow-md transition-shadow cursor-pointer rounded-lg"
+                      onClick={() => handleFoodItemClick(item.id!)}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex gap-3">
+                          <ImageWithFallback
+                            src={item.images?.[0] || '/placeholder-food.jpg'}
+                            alt={item.title}
+                            className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between mb-1">
+                              <div className="flex-1 min-w-0">
+                                {/* FIX 2: Truncate title to one line */}
+                                <h4 className="font-medium text-gray-900 text-sm truncate">{item.title}</h4>
+                                <p className="text-xs text-gray-600 truncate">{item.donorName}</p>
+                              </div>
+                              <div className="flex items-center text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
+                                <Star className="w-3 h-3 mr-1 fill-current text-yellow-500" />
+                                {/* FIX RATING: Use simplified check */}
+                                {(item.rating && item.rating > 0) ? item.rating.toFixed(1) : 'New'}
+                              </div>
                             </div>
-                            <div className="flex items-center text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
-                              <Star className="w-3 h-3 mr-1 fill-current text-yellow-500" />
-                              {item.rating?.toFixed(1) || 'New'}
+                            
+                            <div className="space-y-1 text-xs text-gray-500 ">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                <span className="mr-2">{foodTime.date}</span>
+                                <Clock className="h-3 w-3" />
+                                <span>{foodTime.time}</span>
+                              </span>
+                              <span className="text-amber-600 font-medium">
+                                {item.remainingQuantity} {item.quantityUnit} left
+                              </span>
                             </div>
-                          </div>
-                          
-                          <div className="space-y-1 text-xs text-gray-500">
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {formatFoodTimeDisplay(item)}
-                            </span>
-                            <span className="text-amber-600 font-medium">
-                              {item.remainingQuantity} {item.quantityUnit} left
-                            </span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <div className="flex flex-wrap gap-1">
-                              <Badge 
-                                variant="secondary" 
-                                className="text-xs px-2 py-0 bg-gray-100"
-                              >
-                                {item.category}
-                              </Badge>
-                              {item.tags?.slice(0, 2).map((tag, index) => (
+                            
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-wrap gap-1">
                                 <Badge 
-                                  key={index} 
                                   variant="secondary" 
                                   className="text-xs px-2 py-0 bg-gray-100"
                                 >
-                                  {tag}
+                                  {item.category}
                                 </Badge>
-                              ))}
+                                {item.tags?.slice(0, 2).map((tag, index) => (
+                                  <Badge 
+                                    key={index} 
+                                    variant="secondary" 
+                                    className="text-xs px-2 py-0 bg-gray-100"
+                                  >
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </CardContent>
             </Card>
           </>
@@ -629,7 +642,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
           <>
             {/* Campaigns Slider */}
             <Card className="shadow-lg border-0 rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">Food Distribution Events</CardTitle>
                 <Button 
                   variant="ghost" 
@@ -663,7 +676,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
                             <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
-                                  <h4 className="font-semibold text-sm stroke-text break-words whitespace-pre-wrapmax-w-full">{campaign.title}</h4>
+                                  <h4 className="font-semibold text-sm stroke-text">{campaign.title}</h4>
                                 </div>
                               </div>
                             </div>
@@ -713,7 +726,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
 
             {/* Campaigns List */}
             <Card className="shadow-lg border-0 rounded-xl">
-              <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">Upcoming Events</CardTitle>
                 <Button 
                   variant="ghost" 
@@ -725,56 +738,65 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
                 </Button>
               </CardHeader>
               <CardContent className="space-y-3">
-                {recommendedCampaigns.map((campaign) => (
-                  <Card 
-                    key={campaign.id} 
-                    className="shadow-sm border-0 hover:shadow-md transition-shadow cursor-pointer rounded-lg"
-                    onClick={() => handleCampaignItemClick(campaign.id!)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex gap-3">
-                        <ImageWithFallback
-                          src={campaign.images?.[0] || '/placeholder-campaign.jpg'}
-                          alt={campaign.title}
-                          className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between mb-1">
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-gray-900 text-sm truncate break-words whitespace-pre-wrapmax-w-full">{campaign.title}</h4>
-                              <p className="text-xs text-gray-600 break-words whitespace-pre-wrap max-w-full">{campaign.organizerName}</p>
+                {recommendedCampaigns.map((campaign) => {
+                  // Move variable declaration here, before return
+                  const campaignTime = formatCampaignTimeDisplay(campaign);
+                  return (
+                    <Card 
+                      key={campaign.id} 
+                      className="shadow-sm border-0 hover:shadow-md transition-shadow cursor-pointer rounded-lg"
+                      onClick={() => campaign.id && handleCampaignItemClick(campaign.id)}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex gap-3">
+                          <ImageWithFallback
+                            src={campaign.images?.[0] || '/placeholder-campaign.jpg'}
+                            alt={campaign.title}
+                            className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between mb-1">
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-gray-900 text-sm truncate">{campaign.title}</h4>
+                                {/* FIX 1: Truncate Volunteer Name */}
+                                <p className="text-xs text-gray-600 truncate">{campaign.organizerName}</p>
+                              </div>
+                              <div className="flex items-center text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
+                                <Star className="w-3 h-3 mr-1 fill-current text-yellow-500" />
+                                {/* FIX RATING: Use simplified check */}
+                                {(campaign.rating && campaign.rating > 0) ? campaign.rating.toFixed(1) : 'New'}
+                              </div>
                             </div>
-                            <div className="flex items-center text-xs text-muted-foreground whitespace-nowrap flex-shrink-0 ml-2">
-                              <Star className="w-3 h-3 mr-1 fill-current text-yellow-500" />
-                              {campaign.rating?.toFixed(1) || 'New'}
+                            
+                            <div className="space-y-1 text-xs text-gray-500">
+                              <div className="flex items-center gap-2"> {/* Increased gap */}
+                                <Calendar className="h-3 w-3 flex-shrink-0" />
+                                <span className="mr-2">{campaignTime.date}</span> {/* Added margin */}
+                                <Clock className="h-3 w-3 flex-shrink-0" />
+                                <span>{campaignTime.time}</span>
+                              </div>
+                              <div className="flex items-start gap-1">
+                                <MapPin className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                                {/* FIX 2: Truncate Location Name */}
+                                <span className="break-words whitespace-pre-wrap flex-1 min-w-0 truncate">{campaign.locationName}</span>
+                              </div>
                             </div>
-                          </div>
-                          
-                          <div className="space-y-1 text-xs text-gray-500">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3 flex-shrink-0" />
-                              {formatCampaignDate(campaign)}
-                            </div>
-                            <div className="flex items-start gap-1">
-                              <MapPin className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                              <span className="break-words whitespace-pre-wrap flex-1 min-w-0">{campaign.locationName}</span>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center justify-between mt-2">
-                            <Badge variant="outline" className="text-xs">
-                              {campaign.category}
-                            </Badge>
-                            <div className="flex items-center text-xs text-muted-foreground">
-                              <Users className="w-3 h-3 mr-1" />
-                              {campaign.availableSpots} spots left
+                            
+                            <div className="flex items-center justify-between mt-2">
+                              <Badge variant="outline" className="text-xs">
+                                {campaign.category}
+                              </Badge>
+                              <div className="flex items-center text-xs text-muted-foreground">
+                                <Users className="w-3 h-3 mr-1" />
+                                {campaign.availableSpots} spots left
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </CardContent>
             </Card>
           </>

@@ -1,4 +1,4 @@
-// FDA-Admin/src/firebase/campaignAdminService.ts
+// FDA-Admin/src/firebase/campaignAdminService.ts - UPDATED with Cancellation Function
 import { httpsCallable } from 'firebase/functions';
 import { functions } from './Firebase';
 
@@ -41,5 +41,16 @@ export const adminUpdateCampaignStatus = async (campaignId: string, status: stri
     'adminUpdateCampaignStatus'
   );
   const result = await updateStatus({ campaignId, status });
+  return result.data;
+};
+
+// NEW FUNCTION: For Admin to cancel an active campaign and clean up registrations
+export const adminCancelCampaign = async (campaignId: string, reason: string): Promise<AdminOperationResult> => {
+  const cancelCampaign = httpsCallable<{ campaignId: string; reason: string }, AdminOperationResult>(
+    functions, 
+    'adminOrUserCancelCampaign'
+  );
+  // Pass the campaignId and reason to the newly created Cloud Function
+  const result = await cancelCampaign({ campaignId, reason }); 
   return result.data;
 };

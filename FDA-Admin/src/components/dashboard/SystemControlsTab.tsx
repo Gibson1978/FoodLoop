@@ -39,7 +39,7 @@ import {
   deleteUserAccount,
   type UserData,
   USER_STATUS,
-  // ADD REAL-TIME IMPORTS
+ 
   subscribeToPendingRegistrations,
   subscribeToAllUsers,
   subscribeToRejectedUsers,
@@ -51,6 +51,7 @@ import {
   rejectFoodListing,
   deleteFoodListingAdmin,
   markListingAsCompleted,
+  cancelFoodListingAdmin, 
   type FoodListing,
   FOOD_STATUS, 
   type FoodStatus,
@@ -62,6 +63,8 @@ import {
   rejectCampaign,
   deleteCampaignAdmin,
   updateCampaignStatus,
+
+  cancelCampaignAdmin, 
   type Campaign,
   CAMPAIGN_STATUS, 
   type CampaignStatus,
@@ -78,7 +81,7 @@ const USER_ROLE_CONFIG = {
 
 const USER_STATUS_CONFIG = {
   [USER_STATUS.APPROVED]: { variant: "secondary", className: "bg-green-100 text-green-700", label: "Active" },
-  [USER_STATUS.REJECTED]: { variant: "secondary", className: "bg-orange-100 text-orange-700", label: "Suspended" },
+  [USER_STATUS.SUSPENDED]: { variant: "secondary", className: "bg-orange-100 text-orange-700", label: "Suspended" },
   [USER_STATUS.PENDING]: { variant: "secondary", className: "bg-yellow-100 text-yellow-700", label: "Pending" }
 };
 
@@ -190,7 +193,7 @@ const StarRating = ({ rating, maxRating = 5 }: { rating: number; maxRating?: num
       {[...Array(emptyStars)].map((_, i) => (
         <Star key={`empty-${i}`} className="h-4 w-4 text-gray-300" />
       ))}
-      <span className="text-sm text-muted-foreground ml-1">({rating.toFixed(1)})</span>
+      <span className ="text-sm text-muted-foreground ml-1">({rating.toFixed(1)})</span>
     </div>
   );
 };
@@ -263,7 +266,7 @@ const UserActions = ({
   actionLoading: string | null;
 }) => {
   const isActive = user.status === USER_STATUS.APPROVED;
-  const isSuspended = user.status === USER_STATUS.REJECTED && !isRejectedUser;
+  const isSuspended = user.status === USER_STATUS.SUSPENDED && !isRejectedUser;
   const isPending = user.status === USER_STATUS.PENDING && !isRejectedUser;
 
   const renderActionButtons = () => {
@@ -683,7 +686,8 @@ const FoodCard = ({
               {listing.description && (
                 <div className="text-sm text-gray-600">
                   <span className="font-medium">Description:</span>
-                  <p className="mt-1 leading-relaxed">{listing.description}</p>
+                  {/* FIX: Text Wrapping */}
+                  <p className="mt-1 leading-relaxed break-words whitespace-pre-wrap">{listing.description}</p>
                 </div>
               )}
             </div>
@@ -693,7 +697,9 @@ const FoodCard = ({
                 <div className="flex items-start gap-2">
                   <MapPin className="h-4 w-4 text-purple-600 flex-shrink-0 mt-0.5" />
                   <span className="text-gray-600">
-                    <span className="font-medium">Pickup:</span> {listing.pickupAddress}
+                    <span className="font-medium">Pickup:</span> 
+                    {/* FIX: Text Wrapping */}
+                    <span className="break-words whitespace-pre-wrap">{listing.pickupAddress}</span>
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -713,7 +719,8 @@ const FoodCard = ({
               {listing.pickupInstructions && (
                 <div className="text-sm text-gray-600">
                   <span className="font-medium">Instructions:</span>
-                  <p className="mt-1 leading-relaxed">{listing.pickupInstructions}</p>
+                  {/* FIX: Text Wrapping */}
+                  <p className="mt-1 leading-relaxed break-words whitespace-pre-wrap">{listing.pickupInstructions}</p>
                 </div>
               )}
             </div>
@@ -988,7 +995,8 @@ const CampaignCard = ({
               {campaign.description && (
                 <div className="text-sm text-gray-600">
                   <span className="font-medium">Description:</span>
-                  <p className="mt-1 leading-relaxed">{campaign.description}</p>
+                  {/* FIX: Text Wrapping */}
+                  <p className="mt-1 leading-relaxed break-words whitespace-pre-wrap">{campaign.description}</p>
                 </div>
               )}
             </div>
@@ -998,11 +1006,14 @@ const CampaignCard = ({
                 <div className="flex items-start gap-2">
                   <MapPin className="h-4 w-4 text-purple-600 flex-shrink-0 mt-0.5" />
                   <span className="text-gray-600">
-                    <span className="font-medium">Location:</span> {campaign.locationName}
+                    <span className="font-medium">Location:</span> 
+                    {/* FIX: Text Wrapping */}
+                    <span className="break-words whitespace-pre-wrap">{campaign.locationName}</span>
                   </span>
                 </div>
                 <div className="flex items-start gap-2 ml-6">
-                  <span className="text-gray-600">{campaign.fullAddress}</span>
+                  {/* FIX: Text Wrapping */}
+                  <span className="text-gray-600 break-words whitespace-pre-wrap">{campaign.fullAddress}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-orange-600 flex-shrink-0" />
@@ -1127,7 +1138,7 @@ const CampaignCard = ({
                 >
                   {actionLoading === campaign.id ? (
                     <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                  ) : (
+                    ) : (
                     <UserCheck className="h-3 w-3 mr-1" />
                   )}
                   Reactivate
@@ -1196,6 +1207,7 @@ export function SystemControlsTab() {
   const [activeTab, setActiveTab] = useState("pending");
   const [userStatusFilter, setUserStatusFilter] = useState<"all" | "active" | "suspended" | "rejected">("all");
   const [userRoleFilter, setUserRoleFilter] = useState<"all" | "donor" | "volunteer" | "receiver">("all");
+  // REMOVED 'rejected' from FoodStatusFilter's initial state if 'all' is not selected, but 'all' handles it.
   const [foodStatusFilter, setFoodStatusFilter] = useState<"all" | FoodStatus>("all");
   const [foodCategoryFilter, setFoodCategoryFilter] = useState<"all" | "Fresh Produce" | "Cooked Meals" | "Shelf Stable">("all");
   const [campaignStatusFilter, setCampaignStatusFilter] = useState<"all" | CampaignStatus>("all");
@@ -1220,6 +1232,12 @@ export function SystemControlsTab() {
     pendingUsers?: UserUnsubscribe;
     allUsers?: UserUnsubscribe;
     rejectedUsers?: UserUnsubscribe;
+    // Added for background count listeners:
+    countPendingUsers?: UserUnsubscribe;
+    countAllUsers?: UserUnsubscribe;
+    countRejectedUsers?: UserUnsubscribe;
+    countAllCampaigns?: CampaignUnsubscribe;
+    countAllFoodListings?: FoodUnsubscribe;
   }>({});
 
   // Admin check
@@ -1227,14 +1245,78 @@ export function SystemControlsTab() {
     checkAdminStatus();
   }, []);
 
-  // Load data when tab changes
+  // Effect to set up background listeners for counts on initial load
+  useEffect(() => {
+    if (!isAdmin) return;
+    
+    // 1. Setup listeners for the main tabs to get immediate counts
+    const setupInitialCounts = () => {
+        // Pending Users Count
+        unsubscribeRefs.current.countPendingUsers = subscribeToPendingRegistrations((users) => {
+            setPendingRegistrations(users);
+        }, (error) => {
+            console.error('Initial count pending users error:', error);
+        });
+
+        // All Users & Rejected Users Count
+        // NOTE: We rely on filteredApprovedUsers and filteredRejectedUsers calculation for total users
+        unsubscribeRefs.current.countAllUsers = subscribeToAllUsers((users) => {
+            setApprovedUsers(users);
+        }, (error) => {
+            console.error('Initial count all users error:', error);
+        });
+
+        unsubscribeRefs.current.countRejectedUsers = subscribeToRejectedUsers((users) => {
+            setRejectedUsers(users);
+        }, (error) => {
+            console.error('Initial count rejected users error:', error);
+        });
+
+        // Campaigns Count
+        unsubscribeRefs.current.countAllCampaigns = getAllCampaigns((campaigns) => {
+            setAllCampaigns(campaigns);
+        }, (error) => {
+            console.error('Initial count campaigns error:', error);
+        });
+
+        // Food Listings Count
+        unsubscribeRefs.current.countAllFoodListings = getAllFoodListings((listings) => {
+            setAllFoodListings(listings);
+        }, (error) => {
+            console.error('Initial count food listings error:', error);
+        });
+    };
+
+    setupInitialCounts();
+
+    // Cleanup all background listeners on unmount
+    return () => {
+        if (unsubscribeRefs.current.countPendingUsers) {
+            unsubscribeRefs.current.countPendingUsers();
+        }
+        if (unsubscribeRefs.current.countAllUsers) {
+            unsubscribeRefs.current.countAllUsers();
+        }
+        if (unsubscribeRefs.current.countRejectedUsers) {
+            unsubscribeRefs.current.countRejectedUsers();
+        }
+        if (unsubscribeRefs.current.countAllCampaigns) {
+            unsubscribeRefs.current.countAllCampaigns();
+        }
+        if (unsubscribeRefs.current.countAllFoodListings) {
+            unsubscribeRefs.current.countAllFoodListings();
+        }
+    };
+  }, [isAdmin]);
+
+  // Load data for the active tab when tab changes (heavy loading)
   useEffect(() => {
     if (isAdmin) {
       loadTabData();
     }
   }, [activeTab, isAdmin]);
 
-  // Cleanup subscriptions on unmount
+  // Cleanup subscriptions for active tab data on unmount (separate from count cleanup)
   useEffect(() => {
     return () => {
       if (unsubscribeRefs.current.campaigns) {
@@ -1275,7 +1357,7 @@ export function SystemControlsTab() {
     setError(null);
     
     try {
-      // Cleanup previous subscriptions
+      // Cleanup previous subscriptions for the active tab
       if (unsubscribeRefs.current.campaigns) {
         unsubscribeRefs.current.campaigns();
         unsubscribeRefs.current.campaigns = undefined;
@@ -1297,6 +1379,7 @@ export function SystemControlsTab() {
         unsubscribeRefs.current.rejectedUsers = undefined;
       }
 
+      // Re-setup the necessary listener for the active tab (using the existing functions)
       switch (activeTab) {
         case "pending":
           await setupPendingUsersRealtime();
@@ -1323,90 +1406,45 @@ export function SystemControlsTab() {
 
   const setupPendingUsersRealtime = useCallback(() => {
     return new Promise<void>((resolve) => {
-      unsubscribeRefs.current.pendingUsers = subscribeToPendingRegistrations(
-        (users) => {
-          console.log('Real-time pending users update:', users.length);
-          setPendingRegistrations(users);
+      // Re-use the data from the background listener, but ensure the listener runs if it wasn't already
+      if (!unsubscribeRefs.current.countPendingUsers) {
+          unsubscribeRefs.current.pendingUsers = subscribeToPendingRegistrations(
+              (users) => {
+                  console.log('Real-time pending users update (Tab View):', users.length);
+                  setPendingRegistrations(users);
+                  resolve();
+              },
+              (error) => {
+                  console.error('Real-time pending users error (Tab View):', error);
+                  setError('Failed to load pending users in real-time');
+                  resolve();
+              }
+          );
+      } else {
+          // If already running for counts, just resolve quickly
           resolve();
-        },
-        (error) => {
-          console.error('Real-time pending users error:', error);
-          setError('Failed to load pending users in real-time');
-          resolve();
-        }
-      );
+      }
     });
   }, []);
 
   const setupUsersRealtime = useCallback(() => {
     return new Promise<void>((resolve) => {
-      let resolvedCount = 0;
-      const checkResolved = () => {
-        resolvedCount++;
-        if (resolvedCount === 2) resolve();
-      };
-
-      // Subscribe to approved users
-      unsubscribeRefs.current.allUsers = subscribeToAllUsers(
-        (users) => {
-          console.log('Real-time all users update:', users.length);
-          setApprovedUsers(users);
-          checkResolved();
-        },
-        (error) => {
-          console.error('Real-time all users error:', error);
-          setError('Failed to load all users in real-time');
-          checkResolved();
-        }
-      );
-
-      // Subscribe to rejected users
-      unsubscribeRefs.current.rejectedUsers = subscribeToRejectedUsers(
-        (users) => {
-          console.log('Real-time rejected users update:', users.length);
-          setRejectedUsers(users);
-          checkResolved();
-        },
-        (error) => {
-          console.error('Real-time rejected users error:', error);
-          setError('Failed to load rejected users in real-time');
-          checkResolved();
-        }
-      );
+        // Re-use the data from the background listener, no need to set up redundant listeners
+        resolve();
     });
   }, []);
 
   const setupCampaignsRealtime = useCallback(() => {
     return new Promise<void>((resolve) => {
-      unsubscribeRefs.current.campaigns = getAllCampaigns(
-        (campaigns) => {
-          console.log('Real-time campaigns update:', campaigns.length);
-          setAllCampaigns(campaigns);
-          resolve();
-        },
-        (error) => {
-          console.error('Real-time campaigns error:', error);
-          setError('Failed to load campaigns in real-time');
-          resolve();
-        }
-      );
+        // Re-use the data from the background listener, no need to set up redundant listeners
+        resolve();
     });
   }, []);
 
   const setupFoodListingsRealtime = useCallback(() => {
     return new Promise<void>((resolve) => {
-      unsubscribeRefs.current.foodListings = getAllFoodListings(
-        (listings) => {
-          console.log('Real-time food listings update:', listings.length);
-          setAllFoodListings(listings);
-          resolve();
-        },
-        (error) => {
-          console.error('Real-time food listings error:', error);
-          setError('Failed to load food listings in real-time');
-          resolve();
-        }
-      );
+        // Re-use the data from the background listener, no need to set up redundant listeners
+        resolve();
     });
   }, []);
 
@@ -1482,11 +1520,14 @@ export function SystemControlsTab() {
     
     try {
       let result;
+      const cancellationReason = reason || "Cancelled by admin";
+      
       switch (action) {
         case "approve":
           result = await approveFoodListing(listingId);
           break;
         case "reject":
+          // Keep reject for PENDING items rejected by admin
           result = await rejectFoodListing(listingId, reason);
           break;
         case "delete":
@@ -1496,8 +1537,10 @@ export function SystemControlsTab() {
           result = await markListingAsCompleted(listingId);
           break;
         case "cancel":
-          // For food listings, cancel maps to reject with cancellation reason
-          result = await rejectFoodListing(listingId, reason || "Cancelled by admin");
+          // FIX: Use the new cancellation service function instead of rejectFoodListing
+          // This function is assumed to set status to 'cancelled' and perform cleanup
+          // The reason is required by the Cloud Function interface
+          result = await cancelFoodListingAdmin(listingId, cancellationReason);
           break;
         default:
           throw new Error(`Unknown food action: ${action}`);
@@ -1524,6 +1567,8 @@ export function SystemControlsTab() {
     
     try {
       let result;
+      const cancellationReason = reason || "Cancelled by admin";
+
       switch (action) {
         case "approve":
           result = await approveCampaign(campaignId);
@@ -1538,7 +1583,10 @@ export function SystemControlsTab() {
           result = await updateCampaignStatus(campaignId, CAMPAIGN_STATUS.COMPLETED);
           break;
         case "cancel":
-          result = await updateCampaignStatus(campaignId, CAMPAIGN_STATUS.CANCELLED);
+          // FIX: Use the new cancellation service function instead of updateCampaignStatus
+          // This function is assumed to set status to 'cancelled' and perform cleanup
+          // The reason is required by the Cloud Function interface
+          result = await cancelCampaignAdmin(campaignId, cancellationReason);
           break;
         case "activate":
           result = await updateCampaignStatus(campaignId, CAMPAIGN_STATUS.APPROVED);
@@ -1588,7 +1636,7 @@ export function SystemControlsTab() {
       user.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = userStatusFilter === "all" || 
       (userStatusFilter === "active" && user.status === USER_STATUS.APPROVED) ||
-      (userStatusFilter === "suspended" && user.status === USER_STATUS.REJECTED);
+      (userStatusFilter === "suspended" && user.status === USER_STATUS.SUSPENDED);
     const matchesRole = userRoleFilter === "all" || user.role === userRoleFilter;
     return matchesSearch && matchesStatus && matchesRole;
   });
@@ -1632,7 +1680,7 @@ export function SystemControlsTab() {
     return filtered;
   }, [allCampaigns, campaignStatusFilter, campaignCategoryFilter]);
 
-  // Count calculations
+  // Count calculations - Now relying on state variables populated by background listeners
   const pendingCounts = {
     total: pendingRegistrations.length,
     donors: pendingRegistrations.filter(r => r.role === 'donor').length,
@@ -1643,7 +1691,7 @@ export function SystemControlsTab() {
   const userCounts = {
     total: approvedUsers.filter(u => u.status !== USER_STATUS.PENDING).length + rejectedUsers.length,
     active: approvedUsers.filter(u => u.status === USER_STATUS.APPROVED).length,
-    suspended: approvedUsers.filter(u => u.status === USER_STATUS.REJECTED).length,
+    suspended: approvedUsers.filter(u => u.status === USER_STATUS.SUSPENDED).length,
     rejected: rejectedUsers.length,
     donors: approvedUsers.filter(u => u.role === 'donor' && u.status !== USER_STATUS.PENDING).length + rejectedUsers.filter(u => u.role === 'donor').length,
     volunteers: approvedUsers.filter(u => u.role === 'volunteer' && u.status !== USER_STATUS.PENDING).length + rejectedUsers.filter(u => u.role === 'volunteer').length,
@@ -1708,21 +1756,37 @@ export function SystemControlsTab() {
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-4">
+              {/* PENDING TAB - Displays the count in the main label already */}
               <TabsTrigger value="pending" className="flex items-center gap-2">
                 <Clock className="h-4 w-4" />
                 Pending ({pendingCounts.total})
               </TabsTrigger>
+              
               <TabsTrigger value="users" className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 Users ({userCounts.total})
               </TabsTrigger>
+              
+              {/* CAMPAIGNS TAB - Add pending badge */}
               <TabsTrigger value="campaigns" className="flex items-center gap-2">
                 <Package className="h-4 w-4" />
-                Campaigns ({allCampaigns.length})
+                Campaigns ({campaignCounts.total})
+                {campaignCounts.pending > 0 && (
+                    <Badge variant="destructive" className="ml-1 px-2 text-xs">
+                        {campaignCounts.pending} Pending
+                    </Badge>
+                )}
               </TabsTrigger>
+              
+              {/* LISTINGS TAB - Add pending badge */}
               <TabsTrigger value="listings" className="flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
-                Food Listings ({allFoodListings.length})
+                Food Listings ({foodCounts.total})
+                {foodCounts.pending > 0 && (
+                    <Badge variant="destructive" className="ml-1 px-2 text-xs">
+                        {foodCounts.pending} Pending
+                    </Badge>
+                )}
               </TabsTrigger>
             </TabsList>
 
@@ -1935,10 +1999,13 @@ export function SystemControlsTab() {
                         { value: "all", label: `All (${foodCounts.total})` },
                         { value: FOOD_STATUS.PENDING, label: `Pending (${foodCounts.pending})` },
                         { value: FOOD_STATUS.APPROVED, label: `Approved (${foodCounts.approved})` },
-                        { value: FOOD_STATUS.REJECTED, label: `Rejected (${foodCounts.rejected})` },
+                        // REMOVED REJECTED FILTER BUTTON
                         { value: FOOD_STATUS.COMPLETED, label: `Completed (${foodCounts.completed})` },
                         { value: FOOD_STATUS.CANCELLED, label: `Cancelled (${foodCounts.cancelled})` }
-                      ].map(({ value, label }) => (
+                      ]
+                      // Filter out the REJECTED status button
+                      .filter(item => item.value !== FOOD_STATUS.REJECTED)
+                      .map(({ value, label }) => (
                         <Button
                           key={value}
                           variant={foodStatusFilter === value ? "default" : "outline"}

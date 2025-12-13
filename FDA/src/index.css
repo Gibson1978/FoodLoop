@@ -12,6 +12,9 @@
     margin: 0 !important;
     padding: 0 !important;
     overflow-x: hidden !important;
+
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
   }
 
   body {
@@ -1361,6 +1364,10 @@
   .border-red-200 {
     border-color: var(--color-red-200);
   }
+
+  .border-red-600 {
+    border-color: var(--color-red-600);
+  }
   
 
   .border-transparent {
@@ -2272,6 +2279,15 @@
     --tw-backdrop-blur: blur(var(--blur-sm));
     -webkit-backdrop-filter: var(--tw-backdrop-blur, ) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate, ) var(--tw-backdrop-sepia, );
     backdrop-filter: var(--tw-backdrop-blur, ) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate, ) var(--tw-backdrop-sepia, );
+  }
+
+  .filter-none {
+    filter: none !important;
+  }
+  .backdrop-blur-none {
+    --tw-backdrop-blur: blur(0);
+    -webkit-backdrop-filter: var(--tw-backdrop-blur) /* ... other filters ... */;
+    backdrop-filter: var(--tw-backdrop-blur) /* ... other filters ... */;
   }
 
   .transition-\[color\,box-shadow\] {

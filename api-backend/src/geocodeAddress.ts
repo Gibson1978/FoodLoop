@@ -1,5 +1,6 @@
 // functions/src/geocodeAddress.ts
 import * as functions from "firebase-functions";
+import { onCall} from "firebase-functions/v2/https";
 
 interface GeocodeRequest {
   address: string;
@@ -11,7 +12,11 @@ interface GeocodeResponse {
   formattedAddress: string;
 }
 
-export const geocodeAddress = functions.https.onCall(
+export const geocodeAddress = onCall(
+  {
+    secrets: ["APP_MAPS_KEY"], 
+    memory: "512MiB", 
+  },
   async (request: functions.https.CallableRequest<GeocodeRequest>): Promise<GeocodeResponse> => {
     // 1. Validate authentication
     if (!request.auth) {
@@ -32,7 +37,7 @@ export const geocodeAddress = functions.https.onCall(
 
     try {
       // 3. Get API key from environment (updated for Firebase v12+)
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      const apiKey = process.env.APP_MAPS_KEY;
       if (!apiKey) {
         console.error("Google Maps API key not configured");
         throw new functions.https.HttpsError(

@@ -16,6 +16,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, auth } from './firebase';
 import { geocodeAddress} from '../UnifiedFolder/LocationFolder/useGeocoding';
 import { DashboardService } from '../UnifiedFolder/services/DashboardServices';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export interface FoodListing {
   id?: string;
@@ -220,10 +221,13 @@ export const getUserFoodListings = (
           listings.push({
             id: doc.id,
             ...data,
+            // FIX: Explicitly map rating/totalRatings
+            rating: data.rating as number || 0, 
+            totalRatings: data.totalRatings as number || 0,
             createdAt: data.createdAt?.toDate(),
             updatedAt: data.updatedAt?.toDate(),
             cancelledAt: data.cancelledAt?.toDate()
-          } as FoodListing);
+        } as FoodListing);
         });
         onUpdate(listings);
       },
@@ -257,13 +261,26 @@ export const getApprovedFoodListings = (
         const listings: FoodListing[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          listings.push({
+          
+          // --- 🚨 DEBUG LOGGING START 🚨 ---
+          const mappedListing = {
             id: doc.id,
             ...data,
+            // FIX: Explicitly map rating/totalRatings
+            rating: data.rating as number || 0,
+            totalRatings: data.totalRatings as number || 0,
             createdAt: data.createdAt?.toDate(),
             updatedAt: data.updatedAt?.toDate(),
             cancelledAt: data.cancelledAt?.toDate()
-          } as FoodListing);
+          } as FoodListing;
+
+          console.log(`[FOOD DEBUG] ID: ${doc.id}`);
+          console.log(`[FOOD DEBUG] Firestore rating value: ${data.rating}`); // Check original value
+          console.log(`[FOOD DEBUG] Mapped rating type/value: ${typeof mappedListing.rating} / ${mappedListing.rating}`); // Check mapped value
+          console.log(`[FOOD DEBUG] Mapped totalRatings: ${mappedListing.totalRatings}`);
+          // --- 🚨 DEBUG LOGGING END 🚨 ---
+
+          listings.push(mappedListing);
         });
         
         console.log('📦 Food listings loaded:', listings.length);
@@ -281,7 +298,7 @@ export const getApprovedFoodListings = (
   }
 };
 
-// Cancel user's own food listing with reason
+// Cancel user's own food listing with reason (FIREBASE)
 export const cancelFoodListing = async (
   listingId: string, 
   cancellationReason: string
@@ -292,31 +309,33 @@ export const cancelFoodListing = async (
       return { success: false, error: 'User must be authenticated' };
     }
 
-    const listingDoc = await getDoc(doc(db, 'foodListings', listingId));
-    if (!listingDoc.exists()) {
-      return { success: false, error: 'Listing not found' };
-    }
+    // Call the Cloud Function for atomic cancellation and cleanup
+    const functions = getFunctions();
+    const cancelFunction = httpsCallable<{listingId: string, reason: string}, {success: boolean; message: string}>(
+        functions, 
+        'adminOrUserCancelFoodListing'
+    );
 
-    const listingData = listingDoc.data();
-
-    // Check if user is the listing owner
-    if (listingData.donorId !== user.uid) {
-      return { success: false, error: 'Not authorized to cancel this listing' };
-    }
-
-    // Update status to cancelled with reason
-    await updateDoc(doc(db, 'foodListings', listingId), {
-      status: 'cancelled',
-      cancellationReason: cancellationReason,
-      cancelledAt: serverTimestamp(),
-      cancelledBy: user.uid,
-      updatedAt: serverTimestamp()
+    // Ensure 'result' is declared and used *only* inside the try block
+    const result = await cancelFunction({ 
+        listingId, 
+        reason: cancellationReason 
     });
 
-    console.log('✅ Food listing cancelled with reason:', cancellationReason);
-    return { success: true };
+    if (result.data.success) {
+      console.log('✅ Food listing cancelled via Cloud Function');
+      return { success: true };
+    } else {
+      // The use of result.data.message is safe because we are inside the try block
+      return { success: false, error: result.data.message || 'Failed to cancel listing via server' };
+    }
   } catch (error: any) {
     console.error('Error cancelling food listing:', error);
+    // Handle specific function errors
+    if (error.code === 'functions/permission-denied') {
+        return { success: false, error: 'Permission denied. You may not own this listing.' };
+    }
+    
     return { 
       success: false, 
       error: error.message || 'Failed to cancel food listing' 
@@ -429,10 +448,13 @@ export const getDashboardFoodListings = (
           listings.push({
             id: doc.id,
             ...data,
+            // FIX: Explicitly map rating/totalRatings
+            rating: data.rating as number || 0,
+            totalRatings: data.totalRatings as number || 0,
             createdAt: data.createdAt?.toDate(),
             updatedAt: data.updatedAt?.toDate(),
             cancelledAt: data.cancelledAt?.toDate()
-          } as FoodListing);
+        } as FoodListing);
         });
 
         // Apply dashboard filtering

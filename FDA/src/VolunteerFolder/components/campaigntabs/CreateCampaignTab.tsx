@@ -308,7 +308,7 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
           </div>
           <Button 
             onClick={() => setIsSubmitted(false)}
-            className="w-full h-12 bg-green-600 hover:bg-green-700 text-white rounded-xl text-base font-semibold shadow-lg transition-all duration-200"
+            className="mt-2 w-full h-12 bg-green-600 hover:bg-green-700 text-white rounded-xl text-base font-semibold shadow-lg transition-all duration-200"
           >
             Confirm
           </Button>

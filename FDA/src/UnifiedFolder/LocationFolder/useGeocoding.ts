@@ -12,26 +12,14 @@ export const geocodeAddress = async (address: string): Promise<GeocodeResult | n
   try {
     console.log('📍 Attempting to geocode address:', address);
     
-    // Strategy: Try Cloud Function first, then fall back to direct API
-    try {
-      // First try Cloud Function
-      const result = await cloudFunctionGeocode(address);
-      if (result) {
-        return result;
-      }
-    } catch (cloudError) {
-      console.warn('⚠️ Cloud Function geocoding failed, trying direct API...', cloudError);
+    // Try Cloud Function with retry
+    const result = await retryCloudFunctionGeocode(address, 3);
+    if (result) {
+      return result;
     }
-
-    // Fall back to direct geocoding if Cloud Function fails
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-    if (apiKey) {
-      console.log('📍 Using direct Google Maps API as fallback');
-      return await directGeocode(address, apiKey);
-    } else {
-      console.log('📍 No API key found, cannot geocode address');
-      return null;
-    }
+    
+    console.log('📍 All geocoding attempts failed');
+    return null;
   } catch (error: any) {
     console.error('❌ All geocoding methods failed:', error);
     console.warn('⚠️ Proceeding without coordinates');
@@ -67,39 +55,48 @@ const cloudFunctionGeocode = async (address: string): Promise<GeocodeResult | nu
   }
 };
 
-// Direct geocoding as fallback
-const directGeocode = async (address: string, apiKey: string): Promise<GeocodeResult | null> => {
-  try {
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
-    );
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    
-    if (result.status === "OK" && result.results[0]) {
-      const location = result.results[0].geometry.location;
-      const formattedAddress = result.results[0].formatted_address;
+const retryCloudFunctionGeocode = async (
+  address: string, 
+  maxRetries: number
+): Promise<GeocodeResult | null> => {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        console.log(`🔄 Retry attempt ${attempt}/${maxRetries} for geocoding`);
+        // Exponential backoff: wait longer between retries
+        const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        await delay(delayMs);
+      }
       
-      console.log('✅ Direct geocoding successful:', { latitude: location.lat, longitude: location.lng });
+      const result = await cloudFunctionGeocode(address);
+      if (result) {
+        return result;
+      }
       
-      return {
-        latitude: location.lat,
-        longitude: location.lng,
-        formattedAddress: formattedAddress
-      };
-    } else if (result.status === "ZERO_RESULTS") {
-      console.warn('⚠️ No results found for address:', address);
-      return null;
-    } else {
-      console.warn('⚠️ Geocoding API returned status:', result.status);
-      return null;
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`⚠️ Geocoding attempt ${attempt} failed:`, error.message || error);
+      
+      // Don't retry on certain errors
+      if (error.code === 'functions/not-found' || 
+          error.code === 'functions/internal' ||
+          error.code === 'functions/permission-denied') {
+        console.warn('⚠️ Non-retryable error, stopping retries');
+        break;
+      }
     }
-  } catch (error) {
-    console.error('❌ Direct geocoding failed:', error);
-    return null;
   }
+  
+  if (lastError) {
+    throw lastError;
+  }
+  
+  return null;
+};
+
+// Utility function for delay
+const delay = (ms: number): Promise<void> => {
+  return new Promise(resolve => setTimeout(resolve, ms));
 };

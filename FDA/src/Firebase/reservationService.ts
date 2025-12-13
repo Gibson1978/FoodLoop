@@ -158,7 +158,6 @@ export const reserveFood = async (
 };
 
 // Register for campaign (for receivers)
-// Register for campaign (for receivers) - UPDATED to reuse cancelled registrations
 export const registerForCampaign = async (
   campaignId: string
 ): Promise<{success: boolean; error?: string; registrationId?: string}> => {

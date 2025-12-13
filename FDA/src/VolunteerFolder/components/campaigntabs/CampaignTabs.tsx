@@ -1,3 +1,4 @@
+// CampaignTabs.tsx
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '../../../UnifiedFolder/ui/card';
 import { Button } from '../../../UnifiedFolder/ui/button';
@@ -14,16 +15,18 @@ import { ImageWithFallback } from '../../../UnifiedFolder/Images/ImageWithFallba
 import { CampaignDetailDialog } from './CampaignDetailDialog';
 import { UnifiedCancelDialog } from '../../../UnifiedFolder/modals/UnifiedCancelDialog';
 import { toast } from 'sonner';
-import { getUserCampaigns, type Campaign } from '../../../Firebase/campaignUsers';
+import { getUserCampaigns, cancelCampaign, type Campaign } from '../../../Firebase/campaignUsers';
 import type { UserData } from '../../../Firebase/auth';
 
 interface CampaignsTabProps {
   onNavigateToCreate: () => void;
-  onNavigateToRegistrations?: (campaignId: string, campaignName: string) => void; // Add this
+  onNavigateToRegistrations?: (campaignId: string, campaignName: string) => void; 
   userData?: UserData;
+  autoOpenCampaignId?: string | null; // REQUIRED: Prop to receive ID from Dashboard/Deep Link
+  onAutoOpenComplete?: () => void; // REQUIRED: Prop to clear ID once dialog is opened
 }
 
-export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, userData }: CampaignsTabProps) {
+export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, userData, autoOpenCampaignId, onAutoOpenComplete }: CampaignsTabProps) {
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [itemToCancel, setItemToCancel] = useState<Campaign | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -37,9 +40,9 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
   useEffect(() => {
     const unsubscribe = getUserCampaigns(
       (campaigns) => {
-        // Active campaigns: ongoing status
+        // Active campaigns: approved status
         const active = campaigns.filter(campaign => 
-          campaign.status === 'ongoing'
+          campaign.status === 'approved'
         );
         
         // Completed campaigns: completed status
@@ -64,7 +67,25 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
     return () => unsubscribe();
   }, []);
 
-  // ... (keep all other functions the same until handleViewRegistrations)
+  // FIX: useEffect to handle auto-opening the dialog when autoOpenCampaignId is set
+  useEffect(() => {
+    if (autoOpenCampaignId && !loading && !error) {
+      // Find the campaign in either active or completed lists
+      const campaign = activeCampaigns.find(c => c.id === autoOpenCampaignId) || 
+                     completedCampaigns.find(c => c.id === autoOpenCampaignId);
+      
+      if (campaign) {
+        setSelectedCampaign(campaign);
+        setIsDialogOpen(true);
+      }
+      
+      // Clear the ID after attempting to open
+      if (onAutoOpenComplete) {
+        onAutoOpenComplete();
+      }
+    }
+  }, [autoOpenCampaignId, loading, error, activeCampaigns, completedCampaigns, onAutoOpenComplete]);
+
 
   const handleViewRegistrations = (campaign: Campaign) => {
     if (onNavigateToRegistrations && campaign.id) {
@@ -75,25 +96,23 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
     }
   };
 
-  // REMOVED: The old loadUserCampaigns function since we're using real-time now
-
   const handleViewDetails = (campaign: Campaign) => {
     setSelectedCampaign(campaign);
     setIsDialogOpen(true);
   };
 
-  // Handle cancellation with reason
   const handleCancelCampaign = async (campaignId: string, reason: string) => {
     try {
-      const { cancelCampaign } = await import('../../../Firebase/campaignUsers');
+      // Call the user-level function which internally calls the Cloud Function
       const result = await cancelCampaign(campaignId, reason);
       
       if (result.success) {
         toast.success('Campaign cancelled successfully');
-        // REAL-TIME: No need to manually reload - real-time listener will update automatically
+        // REAL-TIME: Listener handles status change
         setIsCancelDialogOpen(false);
         setItemToCancel(null);
       } else {
+        // Correctly handle result.error from the client function
         toast.error(result.error || 'Failed to cancel campaign');
       }
     } catch (error) {
@@ -124,7 +143,7 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'ongoing':
+      case 'approved':
         return 'bg-green-100 text-green-800';
       case 'pending':
         return 'bg-orange-100 text-orange-800';
@@ -139,7 +158,7 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'ongoing':
+      case 'approved':
         return 'Active';
       case 'pending':
         return 'Pending Approval';
@@ -280,7 +299,7 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
               </Card>
             ) : (
               activeCampaigns.map((campaign) => (
-                <Card key={campaign.id} className="shadow-sm border-0 rounded-xl cursor-pointer hover:shadow-md transition-shadow relative">
+                <Card key={campaign.id} className="shadow-sm border-0 rounded-xl cursor-pointer hover:shadow-md transition-shadow">
                   <CardContent className="p-3" onClick={() => handleViewDetails(campaign)}>
                     <div className="flex gap-3">
                       <div className="flex-shrink-0">
@@ -327,7 +346,6 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
                         <div className="space-y-1 text-[10px] text-gray-500 mb-2">
                           <span className="flex items-center gap-1 truncate">
                             <Calendar className="h-2 w-2 flex-shrink-0" />
-                            {/* UPDATED: Date above time format */}
                             {formatDateTime(campaign.campaignDate, campaign.startTime, campaign.endTime)}
                           </span>
                           <span className="flex items-center gap-1 truncate">
@@ -336,62 +354,44 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
                           </span>
                         </div>
 
-                        {/* Rating */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
+                        {/* Rating and Buttons Container */}
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                          {/* Rating */}
+                          <div className="flex items-center gap-1 flex-shrink-0">
                             {renderStars(campaign.rating)}
                             {campaign.rating && campaign.rating > 0 && (
                               <span className="text-[10px] text-gray-500">({campaign.rating.toFixed(1)})</span>
                             )}
                           </div>
+                          
+                          {/* Action Buttons - FIXED: standardized height to h-8 */}
+                          {campaign.status === 'approved' && (
+                            <div className="flex gap-1.5 flex-shrink-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  handleViewRegistrations(campaign);
+                                }}
+                                className="h-8 px-2 text-[10px] border-blue-200 text-blue-600 hover:bg-blue-50 bg-white shadow-sm whitespace-nowrap"
+                              >
+                                View Registrations
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  openCancelDialog(campaign);
+                                }}
+                                className="h-8 px-2 text-[10px] border-red-200 text-red-600 hover:bg-red-50 bg-white shadow-sm whitespace-nowrap"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
-                    
-                    {/* Check Registered button positioned at bottom right */}
-                    {campaign.status === 'ongoing' && (
-                      <div className="absolute bottom-3 right-2 flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleViewRegistrations(campaign);
-                          }}
-                          className="h-8 px-2 text-[10px] border-blue-200 text-blue-600 hover:bg-blue-50 bg-white shadow-sm"
-                        >
-                          View Registrations
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openCancelDialog(campaign);
-                          }}
-                          className="h-8 px-2 text-[10px] border-red-200 text-red-600 hover:bg-red-50 bg-white shadow-sm"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    )}
-
-                    {/* Cancel button positioned at bottom right */}
-                    {campaign.status === 'ongoing' && (
-                      <div className="absolute bottom-3 right-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openCancelDialog(campaign);
-                          }}
-                          className="h-8 px-2 text-[10px] border-red-200 text-red-600 hover:bg-red-50 bg-white shadow-sm"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               ))
@@ -449,7 +449,6 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
                         <div className="space-y-1 text-[10px] text-gray-500 mb-2">
                           <span className="flex items-center gap-1 truncate">
                             <Calendar className="h-2 w-2 flex-shrink-0" />
-                            {/* UPDATED: Date above time format */}
                             {formatDateTime(campaign.campaignDate, campaign.startTime, campaign.endTime)}
                           </span>
                           <span className="flex items-center gap-1 truncate">
@@ -459,13 +458,14 @@ export function CampaignsTab({ onNavigateToCreate, onNavigateToRegistrations, us
                         </div>
 
                         {/* Rating */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
                           <div className="flex items-center gap-1">
                             {renderStars(campaign.rating)}
                             {campaign.rating && campaign.rating > 0 && (
                               <span className="text-[10px] text-gray-500">({campaign.rating.toFixed(1)})</span>
                             )}
                           </div>
+                          {/* No buttons for completed listings */}
                         </div>
                       </div>
                     </div>

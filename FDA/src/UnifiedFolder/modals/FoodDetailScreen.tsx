@@ -33,6 +33,30 @@ import {
 import { getApprovedFoodListings, type FoodListing } from "../../Firebase/foodUsers";
 import { openExternalMapWithAddress } from "../../UnifiedFolder/LocationFolder/ExternalMap";
 import { reserveFood } from '../../Firebase/reservationService';
+// FIX: Imports for secure contact and Firestore rating fetch
+import { getContactByUserId as fetchSecureContactDetails } from "../../Firebase/auth";
+import { doc, getDoc } from 'firebase/firestore'; 
+import { db } from '../../Firebase/firebase'; // Assuming 'db' is exported from firebase.ts
+
+interface UserRating {
+  rating: number;
+  totalRatings: number;
+}
+
+// *** NEW HELPER FUNCTION: Fetch User Rating ***
+const fetchUserRating = async (userId: string): Promise<UserRating> => {
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    if (userDoc.exists()) {
+        const data = userDoc.data();
+        return {
+            rating: data.rating as number || 0,
+            totalRatings: data.totalRatings as number || 0,
+        };
+    }
+    return { rating: 0, totalRatings: 0 };
+};
+
 
 interface FoodDetailScreenProps {
   foodId: string;
@@ -57,6 +81,10 @@ export function FoodDetailScreen({
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
+  
+  // *** NEW STATE ***
+  const [donorUserRating, setDonorUserRating] = useState<UserRating>({ rating: 0, totalRatings: 0 });
+  const [donorPhoneNumber, setDonorPhoneNumber] = useState<string | null>(null);
 
   // Theme configuration based on user role
   const themeConfig = {
@@ -108,6 +136,7 @@ export function FoodDetailScreen({
 
   // Fetch food item data from Firebase
   useEffect(() => {
+    // ... (Existing code for fetching food item data)
     const unsubscribe = getApprovedFoodListings(
       (listings) => {
         const foundItem = listings.find(item => item.id === foodId);
@@ -122,6 +151,39 @@ export function FoodDetailScreen({
 
     return () => unsubscribe();
   }, [foodId]);
+
+  // *** NEW EFFECT: Fetch Donor User Rating ***
+  useEffect(() => {
+    if (foodItem?.donorId) {
+        fetchUserRating(foodItem.donorId)
+            .then(setDonorUserRating)
+            .catch(error => {
+                console.error("Error fetching donor user rating:", error);
+            });
+    }
+  }, [foodItem?.donorId]);
+
+  // *** Existing useEffect to fetch donor phone number (FIXED) ***
+  useEffect(() => {
+    if (foodItem?.donorId) {
+      // --------------------------------------------------------------------------
+      // FIX: Call the new secure function with all 3 required parameters
+      // --------------------------------------------------------------------------
+      fetchSecureContactDetails( // FIX 2: Use correct function name
+        foodItem.donorId, // targetUserId
+        foodId,           // interactionId
+        'food'            // interactionType
+      )
+        .then(setDonorPhoneNumber)
+        .catch(error => {
+          console.error("Error fetching donor phone number:", error);
+          setDonorPhoneNumber(null);
+        });
+      // --------------------------------------------------------------------------
+    } else {
+      setDonorPhoneNumber(null);
+    }
+  }, [foodItem?.donorId, foodId]); // Added foodId to dependency array
 
   // Swipe gesture handlers
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -194,16 +256,23 @@ export function FoodDetailScreen({
     }
   };
 
+  // *** UPDATED handleCallDonor ***
   const handleCallDonor = () => {
-    alert(`Calling ${foodItem?.donorName || 'donor'}...`);
+    if (donorPhoneNumber) {
+      window.location.href = `tel:+${donorPhoneNumber}`;
+    } else {
+      alert("Donor contact information not available");
+    }
   };
 
+  // *** UPDATED handleMessageDonor ***
   const handleMessageDonor = () => {
-    const phoneNumber = "";
-    const message = `Hi, I'm interested in your food listing: ${foodItem?.title}`;
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
-    
-    if (phoneNumber) {
+    if (donorPhoneNumber && foodItem) {
+      // Clean the phone number for WhatsApp (remove leading +, spaces, etc. - just digits)
+      const cleanNumber = donorPhoneNumber.replace(/\D/g, ''); 
+      const message = `Hi, I'm interested in your food listing: ${foodItem.title} (ID: ${foodItem.id}).`;
+      const whatsappUrl = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
+      
       window.open(whatsappUrl, '_blank');
     } else {
       alert("Donor contact information not available");
@@ -287,20 +356,38 @@ export function FoodDetailScreen({
     return "Check availability";
   };
 
+  // FIX 1: Updated getExpiryInfo to use explicit UTC+8 time zone for accurate calculations
   const getExpiryInfo = () => {
-    if (!foodItem.availableDate) return { text: "Check availability", color: "text-gray-600 bg-gray-50 border-gray-200" };
+    if (!foodItem.availableDate || !foodItem.endTime) return { text: "Check availability", color: "text-gray-600 bg-gray-50 border-gray-200" };
     
-    const availableDate = new Date(foodItem.availableDate);
+    // Explicitly create the date/time assuming UTC+8, matching server logic
+    const endDateTime = new Date(`${foodItem.availableDate}T${foodItem.endTime}:00+08:00`);
     const now = new Date();
-    const timeDiff = availableDate.getTime() - now.getTime();
-    const hoursDiff = Math.ceil(timeDiff / (1000 * 60 * 60));
     
+    const timeDiff = endDateTime.getTime() - now.getTime(); // Difference in milliseconds
+    const hoursDiff = Math.ceil(timeDiff / (1000 * 60 * 60)); // Difference in hours, rounded up
+    
+    // Determine the text based on hours remaining
+    if (hoursDiff <= 0) {
+      // If end time is in the past, calculate how many hours ago it was
+      const hoursAgo = Math.floor(Math.abs(timeDiff) / (1000 * 60 * 60));
+      
+      // We assume if the end time is passed, the status manager will take care of final completion.
+      // For the UI, we only check if the item is 'expired' or if the listing date is past.
+      if (hoursAgo >= 24) { // Arbitrary point past 24 hours to clearly show 'Expired'
+        return { text: "Expired", color: "text-red-800 bg-red-100 border-red-300" };
+      }
+      return { text: `Ended (${hoursAgo}h ago)`, color: "text-red-600 bg-red-50 border-red-200" };
+    } 
+    
+    // Display remaining time
     if (hoursDiff <= 2) {
       return { text: `${hoursDiff} hour${hoursDiff !== 1 ? 's' : ''} left`, color: "text-red-600 bg-red-50 border-red-200" };
     } else if (hoursDiff <= 6) {
       return { text: `${hoursDiff} hour${hoursDiff !== 1 ? 's' : ''} left`, color: "text-orange-600 bg-orange-50 border-orange-200" };
     } else {
-      return { text: `${Math.ceil(hoursDiff / 24)} day${Math.ceil(hoursDiff / 24) !== 1 ? 's' : ''} left`, color: "text-green-600 bg-green-50 border-green-200" };
+      const daysDiff = Math.ceil(hoursDiff / 24);
+      return { text: `${daysDiff} day${daysDiff !== 1 ? 's' : ''} left`, color: "text-green-600 bg-green-50 border-green-200" };
     }
   };
 
@@ -337,9 +424,10 @@ export function FoodDetailScreen({
       <div className="px-4 sm:px-6 space-y-4 sm:space-y-6">
         {/* Image Carousel with Swipe */}
         <div className="relative">
+          {/* FIX 2: Standardize Image Container Size */}
           <div 
             ref={imageContainerRef}
-            className="aspect-video rounded-xl overflow-hidden relative"
+            className="w-full h-60 sm:h-80 rounded-xl overflow-hidden relative" // FIXED: Enforce height
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -347,7 +435,7 @@ export function FoodDetailScreen({
             <ImageWithFallback
               src={foodItem.images?.[currentImageIndex] || '/placeholder-food.jpg'}
               alt={foodItem.title}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover" // Ensures image fills the container
             />
             
             {/* Navigation Arrows */}
@@ -415,9 +503,10 @@ export function FoodDetailScreen({
                     <Package className="w-3 h-3" />
                     {foodItem.remainingQuantity} {foodItem.quantityUnit} left
                   </Badge>
+                  {/* Item Rating (Optional, for item history) */}
                   <div className="flex items-center text-sm text-gray-600">
                     <Star className="w-3 h-3 sm:w-4 sm:h-4 mr-1 fill-current text-yellow-500" />
-                    {foodItem.rating?.toFixed(1) || 'New'}
+                    {(foodItem.rating && foodItem.rating > 0) ? foodItem.rating.toFixed(1) : 'New'}
                   </div>
                 </div>
               </div>
@@ -472,25 +561,45 @@ export function FoodDetailScreen({
               </Avatar>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center space-x-1 sm:space-x-2">
-                  <h3 className="font-semibold text-base sm:text-lg truncate text-gray-900">{foodItem.donorName || 'Food Donor'}</h3>
+                  <h3 className="mr-2 font-semibold text-base sm:text-lg truncate text-gray-900">{foodItem.donorName || 'Food Donor'}</h3>
                   <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
                 </div>
                 <div className="flex items-center space-x-1 sm:space-x-2 mt-1">
-                  <DonorTypeIcon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
+                  <DonorTypeIcon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0 mr-2" />
                   <span className="text-sm sm:text-base text-gray-600 capitalize truncate">
                     Food Donor
                   </span>
                 </div>
                 <div className="flex items-center space-x-1 mt-1">
-                  <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-yellow-400 text-yellow-400 flex-shrink-0" />
-                  <span className="text-sm sm:text-base font-medium text-gray-700">{foodItem.rating?.toFixed(1) || 'New'}</span>
+                  <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-yellow-500 text-yellow-500 flex-shrink-0 mr-2" />
+                  {/* FIX 1: Display DONOR'S USER RATING */}
+                  <span className="text-sm sm:text-base font-medium text-gray-700">
+                    {donorUserRating.totalRatings === 0 ? 'New' : donorUserRating.rating.toFixed(1)}
+                  </span>
+                  {donorUserRating.totalRatings > 0 && (
+                      <span className="text-sm sm:text-base text-gray-600 truncate">
+                        ({donorUserRating.totalRatings} ratings)
+                      </span>
+                  )}
                 </div>
               </div>
-              <div className="flex space-x-1 sm:space-x-2 flex-shrink-0">
-                <Button variant="outline" size="sm" onClick={handleMessageDonor} className="p-2 sm:p-3 bg-white hover:bg-gray-50">
+              <div className="flex space-x-2 sm:space-x-2 flex-shrink-0">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleMessageDonor} 
+                  disabled={!donorPhoneNumber} // *** DISABLED WHEN NO PHONE NUMBER ***
+                  className="p-2 sm:p-3 bg-white hover:bg-gray-50"
+                >
                   <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleCallDonor} className="p-2 sm:p-3 bg-white hover:bg-gray-50">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleCallDonor} 
+                  disabled={!donorPhoneNumber} // *** DISABLED WHEN NO PHONE NUMBER ***
+                  className="p-2 sm:p-3 bg-white hover:bg-gray-50"
+                >
                   <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                 </Button>
               </div>

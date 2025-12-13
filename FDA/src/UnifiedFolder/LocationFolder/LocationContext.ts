@@ -51,6 +51,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     if (cachedLocation) {
       setUserLocation(cachedLocation);
       setHasPermission(true);
+    } else {
+      refreshLocation(); 
     }
   }, []);
 

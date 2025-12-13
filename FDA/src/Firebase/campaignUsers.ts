@@ -18,6 +18,7 @@ import { db, storage, auth } from './firebase';
 import { getCurrentUserData } from './auth';
 import { geocodeAddress} from '../UnifiedFolder/LocationFolder/useGeocoding';
 import { DashboardService } from '../UnifiedFolder/services/DashboardServices';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export interface Campaign {
   id?: string;
@@ -86,12 +87,17 @@ export const getActiveCampaigns = (
         const campaigns: Campaign[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          campaigns.push({
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate(),
-            updatedAt: data.updatedAt?.toDate()
-          } as Campaign);
+            const mappedCampaign = {
+              id: doc.id,
+              ...data,
+              // FIX: Explicitly map rating/totalRatings
+              rating: data.rating as number || 0,
+              totalRatings: data.totalRatings as number || 0,
+              createdAt: data.createdAt?.toDate(),
+              updatedAt: data.updatedAt?.toDate()
+          } as Campaign;
+          
+          campaigns.push(mappedCampaign);
         });
         onUpdate(campaigns);
       },
@@ -131,10 +137,13 @@ export const getUserCampaigns = (
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           campaigns.push({
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate(),
-            updatedAt: data.updatedAt?.toDate()
+              id: doc.id,
+              ...data,
+              // FIX: Explicitly map rating/totalRatings
+              rating: data.rating as number || 0,
+              totalRatings: data.totalRatings as number || 0,
+              createdAt: data.createdAt?.toDate(),
+              updatedAt: data.updatedAt?.toDate()
           } as Campaign);
         });
         onUpdate(campaigns);
@@ -168,6 +177,9 @@ export const getCampaignById = (
           const campaign: Campaign = {
             id: docSnapshot.id,
             ...data,
+            // FIX: Explicitly map rating/totalRatings (crucial for detail screens)
+            rating: data.rating as number || 0,
+            totalRatings: data.totalRatings as number || 0,
             createdAt: data.createdAt?.toDate(),
             updatedAt: data.updatedAt?.toDate()
           } as Campaign;
@@ -201,12 +213,15 @@ export const getAllCampaigns = async (): Promise<{success: boolean; data?: Campa
 
     querySnapshot.forEach((doc) => {
       const data = doc.data();
-      campaigns.push({
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate(),
-        updatedAt: data.updatedAt?.toDate()
-      } as Campaign);
+        campaigns.push({
+            id: doc.id,
+            ...data,
+            // FIX: Explicitly map rating/totalRatings
+            rating: data.rating as number || 0,
+            totalRatings: data.totalRatings as number || 0,
+            createdAt: data.createdAt?.toDate(),
+            updatedAt: data.updatedAt?.toDate()
+        } as Campaign);
     });
 
     console.log(`✅ Found ${campaigns.length} total campaigns`);
@@ -237,9 +252,12 @@ export const getActiveCampaignsOnce = async (): Promise<{success: boolean; data?
       campaigns.push({
         id: doc.id,
         ...data,
+        // FIX: Explicitly map rating/totalRatings
+        rating: data.rating as number || 0,
+        totalRatings: data.totalRatings as number || 0,
         createdAt: data.createdAt?.toDate(),
         updatedAt: data.updatedAt?.toDate()
-      } as Campaign);
+    } as Campaign);
     });
 
     return { success: true, data: campaigns };
@@ -359,10 +377,12 @@ export const getUserCampaignsOnce = async (): Promise<{success: boolean; data?: 
     querySnapshot.forEach((doc) => {
       const data = doc.data();
       campaigns.push({
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate(),
-        updatedAt: data.updatedAt?.toDate()
+          id: doc.id,
+          ...data,
+          rating: data.rating as number || 0,
+          totalRatings: data.totalRatings as number || 0,
+          createdAt: data.createdAt?.toDate(),
+          updatedAt: data.updatedAt?.toDate()
       } as Campaign);
     });
 
@@ -490,7 +510,7 @@ export const updateCampaignWithImages = async (
   }
 };
 
-// Cancel campaign with reason
+// Cancel campaign with reason (FIREBASE)
 export const cancelCampaign = async (
   campaignId: string,
   cancellationReason: string
@@ -501,112 +521,39 @@ export const cancelCampaign = async (
       return { success: false, error: 'User must be authenticated' };
     }
 
-    // Verify the user owns this campaign
-    const campaignDoc = await getDoc(doc(db, 'campaigns', campaignId));
-    if (!campaignDoc.exists()) {
-      return { success: false, error: 'Campaign not found' };
-    }
+    // Call the Cloud Function for atomic cancellation and cleanup
+    const functions = getFunctions();
+    const cancelFunction = httpsCallable<{campaignId: string, reason: string}, {success: boolean; message: string}>(
+        functions, 
+        'adminOrUserCancelCampaign'
+    );
 
-    const campaignData = campaignDoc.data() as Campaign;
-    if (campaignData.organizerId !== user.uid) {
-      return { success: false, error: 'You can only cancel your own campaigns' };
-    }
-
-    // Update status to cancelled with reason
-    await updateDoc(doc(db, 'campaigns', campaignId), {
-      status: 'cancelled',
-      cancellationReason: cancellationReason,
-      cancelledAt: serverTimestamp(),
-      cancelledBy: user.uid,
-      updatedAt: serverTimestamp()
+    const result = await cancelFunction({ 
+        campaignId, 
+        reason: cancellationReason 
     });
 
-    console.log('✅ Campaign cancelled with reason:', cancellationReason);
-    return { success: true };
-  } catch (error) {
+    if (result.data.success) {
+      console.log('✅ Campaign cancelled via Cloud Function');
+      return { success: true };
+    } else {
+      // The error message comes from the Cloud Function's response
+      return { success: false, error: result.data.message || 'Failed to cancel campaign via server' };
+    }
+  } catch (error: any) {
     console.error('❌ Error cancelling campaign:', error);
+    // Handle specific function errors
+    if (error.code === 'functions/permission-denied') {
+        return { success: false, error: 'Permission denied. You may not own this campaign.' };
+    }
+    // Ensure this path always returns the required type
     return { 
       success: false, 
-      error: error instanceof Error ? error.message : 'Failed to cancel campaign' 
+      error: error.message || 'Failed to cancel campaign' 
     };
   }
 };
 
-// Register for a campaign spot (Receiver function)
-export const registerForCampaign = async (campaignId: string): Promise<{success: boolean; error?: string}> => {
-  try {
-    const user = auth.currentUser;
-    if (!user) {
-      return { success: false, error: 'User must be authenticated' };
-    }
-
-    const campaignDoc = await getDoc(doc(db, 'campaigns', campaignId));
-    if (!campaignDoc.exists()) {
-      return { success: false, error: 'Campaign not found' };
-    }
-
-    const campaignData = campaignDoc.data() as Campaign;
-    
-    // Check if campaign is active
-    if (campaignData.status !== CAMPAIGN_STATUS.APPROVED) {
-      return { success: false, error: 'Campaign is not active for registration' };
-    }
-
-    // Check if there are available spots
-    if (campaignData.availableSpots <= 0) {
-      return { success: false, error: 'No available spots left' };
-    }
-
-    // Update campaign spots
-    await updateDoc(doc(db, 'campaigns', campaignId), {
-      registeredSpots: (campaignData.registeredSpots || 0) + 1,
-      availableSpots: campaignData.availableSpots - 1,
-      updatedAt: new Date()
-    });
-
-    console.log('✅ Successfully registered for campaign');
-    return { success: true };
-  } catch (error) {
-    console.error('❌ Error registering for campaign:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to register for campaign' 
-    };
-  }
-};
-
-// Cancel registration for a campaign spot (Receiver function)
-export const cancelCampaignRegistration = async (campaignId: string): Promise<{success: boolean; error?: string}> => {
-  try {
-    const user = auth.currentUser;
-    if (!user) {
-      return { success: false, error: 'User must be authenticated' };
-    }
-
-    const campaignDoc = await getDoc(doc(db, 'campaigns', campaignId));
-    if (!campaignDoc.exists()) {
-      return { success: false, error: 'Campaign not found' };
-    }
-
-    const campaignData = campaignDoc.data() as Campaign;
-    
-    // Update campaign spots
-    await updateDoc(doc(db, 'campaigns', campaignId), {
-      registeredSpots: Math.max(0, (campaignData.registeredSpots || 0) - 1),
-      availableSpots: campaignData.availableSpots + 1,
-      updatedAt: new Date()
-    });
-
-    console.log('✅ Successfully cancelled campaign registration');
-    return { success: true };
-  } catch (error) {
-    console.error('❌ Error cancelling campaign registration:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to cancel registration' 
-    };
-  }
-};
 
 // Get campaigns by category
 export const getCampaignsByCategory = async (category: string): Promise<{success: boolean; data?: Campaign[]; error?: string}> => {
@@ -624,10 +571,13 @@ export const getCampaignsByCategory = async (category: string): Promise<{success
     querySnapshot.forEach((doc) => {
       const data = doc.data();
       campaigns.push({
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate(),
-        updatedAt: data.updatedAt?.toDate()
+          id: doc.id,
+          ...data,
+          // FIX: Explicitly map rating/totalRatings
+          rating: data.rating as number || 0,
+          totalRatings: data.totalRatings as number || 0,
+          createdAt: data.createdAt?.toDate(),
+          updatedAt: data.updatedAt?.toDate()
       } as Campaign);
     });
 
@@ -692,10 +642,13 @@ export const getDashboardCampaigns = (
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           campaigns.push({
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate(),
-            updatedAt: data.updatedAt?.toDate()
+              id: doc.id,
+              ...data,
+              // FIX: Explicitly map rating/totalRatings
+              rating: data.rating as number || 0,
+              totalRatings: data.totalRatings as number || 0,
+              createdAt: data.createdAt?.toDate(),
+              updatedAt: data.updatedAt?.toDate()
           } as Campaign);
         });
 

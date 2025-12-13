@@ -13,7 +13,9 @@ import {
   TrendingUp, 
   Users, 
   Package,
-  RefreshCw
+  RefreshCw,
+  Download,
+  ExternalLink
 } from "lucide-react";
 import { aiService } from "../../services/aiServices";
 import { PDFService } from "../../services/pdfService";
@@ -24,24 +26,36 @@ interface Message {
   content: string;
   timestamp: Date;
   suggestions?: string[];
+  pdfUrl?: string;
+  pdfFilename?: string;
 }
 
 export function ChatbotTab() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      type: "bot",
-      content: "🤖 **Hello! I'm FoodAI - Your Food Redistribution Platform Assistant**\n\nI'm here to help you analyze platform data, generate insights, and optimize your food redistribution operations. I can assist with:\n\n• **Donation Analytics** - Trends, patterns, and optimization\n• **NGO Performance** - Partner efficiency and engagement  \n• **User Metrics** - Growth, activity, and retention\n• **Report Generation** - Custom insights and recommendations\n• **Platform Optimization** - Efficiency improvements\n\nWhat would you like to explore today?",
-      timestamp: new Date(),
-      suggestions: [
-        "Show donation analytics",
-        "NGO performance overview",
-        "User engagement trends",
-        "Generate weekly insights"
-      ]
+  const SESSION_KEY = "foodAI_chat_history";
+
+  const initialWelcomeMessage: Message = {
+    id: "1",
+    type: "bot",
+    content: "🤖 **Hello! I'm FoodAI - Your Food Redistribution Platform Assistant**\n\nI'm here to help you analyze platform data, generate insights, and optimize your food redistribution operations. I can assist with:\n\n• **Donation Analytics** - Trends, patterns, and optimization\n• **NGO Performance** - Partner efficiency and engagement  \n• **User Metrics** - Growth, activity, and retention\n• **Report Generation** - Custom insights and recommendations\n• **Platform Optimization** - Efficiency improvements\n\nWhat would you like to explore today?",
+    timestamp: new Date(),
+    suggestions: [
+      "Show platform overview and impact metrics",
+      "How many users are at high risk or pending approval?",
+      "Analyze collection efficiency and slow donors",
+      "Generate comprehensive impact report"
+    ]
+  };
+
+  const loadInitialState = (): Message[] => {
+    const savedHistory = sessionStorage.getItem(SESSION_KEY);
+    if (savedHistory) {
+      const messages = JSON.parse(savedHistory) as Message[];
+      return messages.map(msg => ({ ...msg, timestamp: new Date(msg.timestamp) }));
     }
-  ]);
-  
+    return [initialWelcomeMessage];
+  };
+
+  const [messages, setMessages] = useState<Message[]>(loadInitialState);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -51,8 +65,13 @@ export function ChatbotTab() {
   };
 
   useEffect(() => {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(messages));
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, []);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -69,22 +88,38 @@ export function ChatbotTab() {
     setIsLoading(true);
 
     try {
-      const aiResponse = await aiService.generateResponse(inputValue);
+      // Pass the entire history for context
+      const currentHistory = aiService.getHistory(); 
+      const aiResponse = await aiService.generateResponse(inputValue, currentHistory);
       
+      let pdfUrl: string | undefined = undefined;
+      let pdfFilename: string | undefined = undefined;
+
+      // Only generate PDF if the AI response includes a report
+      if (aiResponse.report) {
+        try {
+          const pdfResult = await PDFService.generateReport(aiResponse.report);
+          pdfUrl = pdfResult.url;
+          pdfFilename = pdfResult.filename;
+        } catch (pdfError) {
+          console.error('PDF generation failed:', pdfError);
+        }
+      }
+
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "bot",
         content: aiResponse.response,
         timestamp: new Date(),
-        suggestions: aiResponse.suggestions
+        suggestions: aiResponse.suggestions,
+        // FIX: Use separate spread for explicit undefined clearing
+        ...(pdfUrl ? { pdfUrl } : {}),
+        ...(pdfFilename ? { pdfFilename } : {})
       };
 
       setMessages(prev => [...prev, botMessage]);
+      aiService.addMessageToHistory(userMessage.content, botMessage.content);
 
-      // Handle report generation
-      if (aiResponse.report) {
-        PDFService.generateSWCorpReport(aiResponse.report);
-      }
     } catch (error) {
       console.error('Error getting AI response:', error);
       
@@ -115,6 +150,7 @@ export function ChatbotTab() {
 
   const clearConversation = () => {
     aiService.clearHistory();
+    sessionStorage.removeItem(SESSION_KEY);
     setMessages([
       {
         id: "1",
@@ -122,13 +158,23 @@ export function ChatbotTab() {
         content: "🔄 **Conversation Reset**\n\nI've cleared our conversation history. How can I help you with your food redistribution platform analytics today?",
         timestamp: new Date(),
         suggestions: [
-          "Show donation analytics",
-          "NGO performance overview", 
-          "User engagement trends",
-          "Platform optimization tips"
+          "Show platform overview and impact metrics",
+          "How many users are at high risk or pending approval?",
+          "Analyze collection efficiency and slow donors",
+          "Generate comprehensive impact report"
         ]
       }
     ]);
+  };
+
+  const handlePdfDownload = (url: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -156,8 +202,7 @@ export function ChatbotTab() {
         </CardHeader>
         
         <CardContent className="flex-1 flex flex-col p-0">
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 h-[70vh]">
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -179,9 +224,43 @@ export function ChatbotTab() {
                       }`}
                     >
                       <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+                      
+                      {/* Only show PDF section if this specific message has PDF data */}
+                      {message.pdfUrl && message.pdfFilename && (
+                        <div className="mt-3 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Package className="h-4 w-4 text-primary" />
+                              <div>
+                                <p className="font-medium text-sm text-gray-900">{message.pdfFilename}</p>
+                                <p className="text-xs text-muted-foreground">PDF Document • {new Date().toLocaleDateString()}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs h-8 flex-1"
+                              onClick={() => window.open(message.pdfUrl, '_blank')}
+                            >
+                              <ExternalLink className="h-3 w-3 mr-1" />
+                              View in Browser
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="text-xs h-8 flex-1"
+                              onClick={() => handlePdfDownload(message.pdfUrl!, message.pdfFilename!)}
+                            >
+                              <Download className="h-3 w-3 mr-1" />
+                              Download PDF
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     
-                    {message.suggestions && (
+                    {message.suggestions && message.suggestions.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {message.suggestions.map((suggestion, index) => (
                           <Button
@@ -219,7 +298,7 @@ export function ChatbotTab() {
                       <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
                       <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
                     </div>
-                    <span className="text-sm text-muted-foreground">FoodAI is analyzing...</span>
+                    <span className="text-sm text-muted-foreground">FoodAI is analyzing platform data...</span>
                   </div>
                 </div>
               </div>
@@ -228,14 +307,13 @@ export function ChatbotTab() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
           <div className="border-t p-4">
             <div className="flex gap-2">
               <Input
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask about donations, NGOs, analytics, reports..."
+                placeholder="Ask about donations, analytics, reports..."
                 className="flex-1 bg-input-background"
                 disabled={isLoading}
               />
@@ -248,23 +326,22 @@ export function ChatbotTab() {
               </Button>
             </div>
             
-            {/* Quick Actions */}
             <div className="flex flex-wrap gap-2 mt-3">
-              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => handleSuggestionClick("Show donation analytics and trends")}>
+              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => handleSuggestionClick("Show platform overview and impact metrics")}>
                 <BarChart3 className="h-3 w-3 mr-1" />
-                Donation Analytics
+                Operational Summary
               </Badge>
-              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => handleSuggestionClick("Analyze NGO performance and engagement")}>
+              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => handleSuggestionClick("How many users are at high risk or pending approval?")}>
                 <Users className="h-3 w-3 mr-1" />
-                NGO Performance
+                User Risk & Pending
               </Badge>
-              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => handleSuggestionClick("Show user growth and engagement metrics")}>
+              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => handleSuggestionClick("Analyze collection efficiency and slow donors")}>
                 <TrendingUp className="h-3 w-3 mr-1" />
-                User Metrics
+                Efficiency Analysis
               </Badge>
-              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => handleSuggestionClick("Generate platform optimization recommendations")}>
+              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80" onClick={() => handleSuggestionClick("Generate comprehensive impact report")}>
                 <Package className="h-3 w-3 mr-1" />
-                Optimization Tips
+                Impact Report
               </Badge>
             </div>
           </div>

@@ -1,3 +1,4 @@
+// ListingsTab.tsx
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '../../UnifiedFolder/ui/card';
 import { Button } from '../../UnifiedFolder/ui/button';
@@ -13,7 +14,7 @@ import { ImageWithFallback } from '../../UnifiedFolder/Images/ImageWithFallback'
 import { ListingDetailDialog } from './ListingDetailDialog';
 import { UnifiedCancelDialog } from '../../UnifiedFolder/modals/UnifiedCancelDialog';
 import { toast } from 'sonner';
-import { getUserFoodListings, type FoodListing } from '../../Firebase/foodUsers'; 
+import { getUserFoodListings, cancelFoodListing, type FoodListing } from '../../Firebase/foodUsers'; 
 import type { UserData } from '../../Firebase/auth';
 
 interface ListingsTabProps {
@@ -87,9 +88,6 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
     }
   }, [autoOpenListingId, loading, error, activeListings, completedListings, onAutoOpenComplete]);
 
-  // Remove the old useEffect that used selectedListingId
-
-  // Update dialog handler to not clear autoOpenListingId (parent handles that)
   const handleDialogOpenChange = (open: boolean) => {
     setIsDialogOpen(open);
   };
@@ -99,18 +97,18 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
     setIsDialogOpen(true);
   };
 
-  // Handle cancellation with reason
   const handleCancelListing = async (listingId: string, reason: string) => {
     try {
-      const { cancelFoodListing } = await import('../../Firebase/foodUsers');
+      // Call the user-level function which internally calls the Cloud Function
       const result = await cancelFoodListing(listingId, reason);
       
       if (result.success) {
         toast.success('Listing cancelled successfully');
-        // REAL-TIME: No need to manually reload - real-time listener will update automatically
+        // REAL-TIME: Listener handles status change
         setIsCancelDialogOpen(false);
         setItemToCancel(null);
       } else {
+        // Correctly handle result.error from the client function
         toast.error(result.error || 'Failed to cancel listing');
       }
     } catch (error) {
@@ -123,14 +121,6 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
   const openCancelDialog = (listing: FoodListing) => {
     setItemToCancel(listing);
     setIsCancelDialogOpen(true);
-  };
-
-  // Handle cancel from ListingDetailDialog (takes listingId string)
-  const handleCancelFromDialog = (listingId: string) => {
-    const listing = activeListings.find(l => l.id === listingId) || completedListings.find(l => l.id === listingId);
-    if (listing) {
-      openCancelDialog(listing);
-    }
   };
 
   // REAL-TIME: This function is still needed for when user updates listing through dialog
@@ -218,7 +208,6 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
       toast.error('Cannot view reservations: Listing ID is missing');
     }
   };
-
 
   if (loading) {
     return (
@@ -318,24 +307,38 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
               </Card>
             ) : (
               activeListings.map((listing) => (
-                <Card key={listing.id} className="shadow-sm border-0 rounded-xl cursor-pointer hover:shadow-md transition-shadow relative">
-                  <CardContent className="p-3" onClick={() => handleViewDetails(listing)}>
+                <Card key={listing.id} className="shadow-sm border-0 rounded-xl hover:shadow-md transition-shadow">
+                  <CardContent className="p-3">
+                    {/* Card Content Container */}
                     <div className="flex gap-3">
+                      {/* Image */}
                       <div className="flex-shrink-0">
-                        <div className="w-16 h-16 rounded-lg overflow-hidden">
+                        <div className="w-16 h-16 rounded-lg overflow-hidden" onClick={() => handleViewDetails(listing)}>
                           <ImageWithFallback
                             src={listing.images?.[0]}
                             alt={listing.title}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover cursor-pointer"
                           />
                         </div>
                       </div>
                       
+                      {/* Main Content */}
                       <div className="flex-1 min-w-0">
+                        {/* Title and Status */}
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-medium text-gray-900 text-sm truncate">{listing.title}</h3>
-                            <p className="text-gray-600 text-xs truncate">{listing.category}</p>
+                            <h3 
+                              className="font-medium text-gray-900 text-sm truncate cursor-pointer hover:text-blue-600"
+                              onClick={() => handleViewDetails(listing)}
+                            >
+                              {listing.title}
+                            </h3>
+                            <p 
+                              className="text-gray-600 text-xs truncate cursor-pointer"
+                              onClick={() => handleViewDetails(listing)}
+                            >
+                              {listing.category}
+                            </p>
                           </div>
                           <Badge 
                             variant="secondary" 
@@ -373,62 +376,40 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
                           </span>
                         </div>
 
-                        {/* Rating */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
+                        {/* Rating and Buttons Container (FIXED: changed items-end to items-center) */}
+                        <div className="flex items-center justify-between mt-2">
+                          {/* Rating */}
+                          <div className="flex items-center gap-1 flex-shrink-0">
                             {renderStars(listing.rating)}
                             {listing.rating && listing.rating > 0 && (
                               <span className="text-[10px] text-gray-500">({listing.rating.toFixed(1)})</span>
                             )}
                           </div>
+
+                          {/* Action Buttons - Positioned to the right */}
+                          {listing.status === 'approved' && (
+                            <div className="flex gap-1.5 flex-shrink-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewReservations(listing)}
+                                className="h-8 px-2 text-[10px] border-blue-200 text-blue-600 hover:bg-blue-50 bg-white shadow-sm whitespace-nowrap"
+                              >
+                                Reservations
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openCancelDialog(listing)}
+                                className="h-7 px-2 text-[10px] border-red-200 text-red-600 hover:bg-red-50 bg-white shadow-sm whitespace-nowrap"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
-                    
-                    {/* Check Reservation button positioned at bottom right */}
-                    {listing.status === 'approved' && (
-                      <div className="absolute bottom-3 right-2 flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleViewReservations(listing);
-                          }}
-                          className="h-8 px-2 text-[10px] border-blue-200 text-blue-600 hover:bg-blue-50 bg-white shadow-sm"
-                        >
-                          View Reservations
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openCancelDialog(listing);
-                          }}
-                          className="h-8 px-2 text-[10px] border-red-200 text-red-600 hover:bg-red-50 bg-white shadow-sm"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    )}
-                    
-                    {/* Cancel button positioned at bottom right */}
-                    {listing.status === 'approved' && (
-                      <div className="absolute bottom-3 right-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openCancelDialog(listing);
-                          }}
-                          className="h-8 px-2 text-[10px] border-red-200 text-red-600 hover:bg-red-50 bg-white shadow-sm"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               ))
@@ -446,15 +427,15 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
               </Card>
             ) : (
               completedListings.map((listing) => (
-                <Card key={listing.id} className="shadow-sm border-0 rounded-xl cursor-pointer hover:shadow-md transition-shadow">
-                  <CardContent className="p-3" onClick={() => handleViewDetails(listing)}>
+                <Card key={listing.id} className="shadow-sm border-0 rounded-xl hover:shadow-md transition-shadow">
+                  <CardContent className="p-3">
                     <div className="flex gap-3">
                       <div className="flex-shrink-0">
-                        <div className="w-14 h-14 rounded-lg overflow-hidden">
+                        <div className="w-14 h-14 rounded-lg overflow-hidden" onClick={() => handleViewDetails(listing)}>
                           <ImageWithFallback
                             src={listing.images?.[0]}
                             alt={listing.title}
-                            className="w-full h-full object-cover opacity-75"
+                            className="w-full h-full object-cover opacity-75 cursor-pointer"
                           />
                         </div>
                       </div>
@@ -462,8 +443,18 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between mb-2">
                           <div className="min-w-0">
-                            <h3 className="font-medium text-gray-900 text-sm truncate">{listing.title}</h3>
-                            <p className="text-gray-600 text-xs truncate">{listing.category}</p>
+                            <h3 
+                              className="font-medium text-gray-900 text-sm truncate cursor-pointer hover:text-blue-600"
+                              onClick={() => handleViewDetails(listing)}
+                            >
+                              {listing.title}
+                            </h3>
+                            <p 
+                              className="text-gray-600 text-xs truncate cursor-pointer"
+                              onClick={() => handleViewDetails(listing)}
+                            >
+                              {listing.category}
+                            </p>
                           </div>
                           <Badge variant="secondary" className="bg-blue-100 text-blue-800 flex-shrink-0 text-[10px]">
                             Completed
@@ -499,13 +490,14 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
                         </div>
 
                         {/* Rating */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center gap-1">
                             {renderStars(listing.rating)}
                             {listing.rating && listing.rating > 0 && (
                               <span className="text-[10px] text-gray-500">({listing.rating.toFixed(1)})</span>
                             )}
                           </div>
+                          {/* No buttons for completed listings */}
                         </div>
                       </div>
                     </div>
@@ -520,7 +512,6 @@ export function ListingsTab({ onNavigateToUpload, onNavigateToReservations, user
           listing={selectedListing}
           open={isDialogOpen}
           onOpenChange={handleDialogOpenChange} 
-          onCancel={handleCancelFromDialog}
           onUpdate={handleListingUpdated}
         />
 

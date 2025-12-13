@@ -1,4 +1,4 @@
-// functions/src/testDataHelpers.ts - COMPLETE REWRITE
+// functions/src/testDataHelpers.ts - COMPLETE REWRITE WITH CRITICAL CONSISTENCY FIXES
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import { faker } from "@faker-js/faker";
@@ -322,11 +322,12 @@ export const FOOD_CATEGORIES = {
     items: ["Fresh Produce"], 
   },
   SHELF_STABLE: { 
-    items: ["Shelf stable"], 
+    items: ["Shelf Stable"], 
   }
 };
 
 // ========== HELPER FUNCTIONS ==========
+// ✅ FIX: Added Manglish cleanup
 function cleanGeminiResponse(text: string, realName?: string): string {
   if (!text) return "";
   
@@ -344,6 +345,14 @@ function cleanGeminiResponse(text: string, realName?: string): string {
     .replace(/^["']|["']$/g, '')
     .trim();
   
+  // ⛔ CRITICAL LANGUAGE FIX: Remove common Manglish terms for a more professional tone
+  cleaned = cleaned
+    .replace(/sedap/gi, 'delicious')
+    .replace(/best/gi, 'excellent')
+    .replace(/\s+lah/gi, '') // Removes "okay lah"
+    .replace(/\s+lor/gi, '')
+    .replace(/\s+meh/gi, '');
+  
   // Ensure the real name is mentioned at least once if provided
   if (realName && !cleaned.includes(realName)) {
     cleaned = cleaned.replace(/\.$/, `. Provided by ${realName}.`);
@@ -352,38 +361,141 @@ function cleanGeminiResponse(text: string, realName?: string): string {
   return cleaned;
 }
 
-function getDonorImages(donorName: string): string[] {
-  const imageMapping: Record<string, string[]> = {
-    // Restaurants
-    "KFC Malaysia": ["crispy_chicken_meal", "zinger_burger_combo", "hot_spicy_chicken", "family_bucket", "snack_plate_fries"],
-    "McDonald's": ["big_mac_meal", "chicken_mcnuggets", "filet_o_fish", "breakfast_mcmuffin", "happy_meal"],
-    "Pizza Hut": ["supreme_pizza", "cheese_lovers_pizza", "pasta_meal_combo", "garlic_bread_sticks", "mixed_pizza_variety"],
-    "Nando's": ["peri_peri_chicken", "grilled_chicken_platter", "flame_grilled_wraps", "portuguese_rice_meal", "spicy_chicken_quarters"],
-    "PappaRich": ["nasi_lemak_set", "roti_canai_combo", "chicken_rice_meal", "char_kuey_teow", "curly_laksa_bowl"],
-    "The Chicken Rice Shop": ["steamed_chicken_rice", "roasted_chicken_combo", "mixed_chicken_platter", "chicken_noodle_soup", "family_chicken_pack"],
-    "Secret Recipe": ["chocolate_cake_slice", "grilled_chicken_pasta", "beef_lasagna_meal", "pastry_assortment", "creamy_carbonara"],
-    "OldTown White Coffee": ["kopi_breakfast_set", "nasi_lemak_pack", "kaya_toast_combo", "curry_mee_bowl", "white_coffee_snack"],
-    
-    // Supermarkets
-    "AEON BiG": ["fresh_vegetables_basket", "mixed_fruits_collection", "rice_essentials_pack", "canned_goods_variety", "bakery_bread_assortment"],
-    "Giant Hypermarket": ["grocery_essentials_pack", "fresh_produce_selection", "household_staples_bundle", "snacks_beverages_box", "frozen_food_variety"],
-    "Tesco": ["international_foods_selection", "fresh_meat_seafood", "organic_produce_basket", "baking_essentials_kit", "ready_eat_meals"],
-    "NSK Trade City": ["bulk_rice_grains", "local_produce_special", "affordable_groceries_bundle", "spices_condiments_set", "household_value_pack"],
-    "Econsave": ["budget_groceries_bundle", "local_products_selection", "essential_food_items", "daily_necessities_box", "value_deals_assortment"],
-    "Mydin": ["muslim_friendly_groceries", "local_products_variety", "wholesale_essentials_pack", "halal_food_selection", "bulk_purchase_bundle"],
-    
-    // Hotels
-    "Hilton Kuala Lumpur": ["international_buffet_selection", "wedding_banquet_leftovers", "conference_lunch_packages", "breakfast_pastry_assortment", "fine_dining_surplus"],
-    "Sheraton Imperial": ["business_lunch_buffet", "event_catering_surplus", "international_cuisine_selection", "dessert_pastry_collection", "corporate_dinner_packages"],
-    "Le Meridien Kuala Lumpur": ["french_cuisine_selection", "luxury_dining_leftovers", "event_catering_packages", "gourmet_pastry_assortment", "fine_dining_experience"],
-    "Concorde Hotel Shah Alam": ["local_cuisine_buffet", "business_event_leftovers", "traditional_malay_dishes", "conference_meal_packages", "banquet_food_selection"],
-    "Glenmarie Hotel & Golf Resort": ["resort_breakfast_buffet", "golf_event_catering", "outdoor_bbq_leftovers", "family_dining_packages", "recreation_meal_selection"],
-    "One World Hotel": ["chinese_banquet_leftovers", "corporate_event_packages", "international_buffet_selection", "wedding_dinner_surplus", "business_lunch_assortment"],
-    "Sunway Resort Hotel": ["theme_park_catering_pack", "family_buffet_leftovers", "large_event_surplus", "kids_meal_packages", "resort_dining_selection"],
-    "Royale Chulan Kuala Lumpur": ["malay_traditional_banquet", "cultural_event_leftovers", "royal_dining_experience", "heritage_cuisine_pack", "traditional_dessert_collection"]
-  };
 
-  return imageMapping[donorName] || ["default_food"];
+// 🖼️ CRITICAL IMAGE MAPPING FIX: Map image key based on Donor AND Category
+const FOOD_IMAGE_CATEGORY_MAP: Record<string, Record<string, string[]>> = {
+  // Restaurants (Cooked Meals / Fresh Produce only)
+  "KFC Malaysia": {
+    "Cooked Meals": ["crispy_chicken_meal", "zinger_burger_combo", "hot_spicy_chicken", "family_bucket", "snack_plate_fries"],
+    "Fresh Produce": ["crispy_chicken_meal"], // Fallback if somehow generated
+    "Shelf Stable": ["snack_plate_fries"], // Snacks/Drinks only
+  },
+  "McDonald's": {
+    "Cooked Meals": ["big_mac_meal", "chicken_mcnuggets", "filet_o_fish", "breakfast_mcmuffin", "happy_meal"],
+    "Fresh Produce": ["big_mac_meal"],
+    "Shelf Stable": ["big_mac_meal"],
+  },
+  "Pizza Hut": {
+    "Cooked Meals": ["supreme_pizza", "cheese_lovers_pizza", "pasta_meal_combo", "mixed_pizza_variety"],
+    "Fresh Produce": ["garlic_bread_sticks"],
+    "Shelf Stable": ["garlic_bread_sticks"],
+  },
+  "Nando's": {
+    "Cooked Meals": ["peri_peri_chicken", "grilled_chicken_platter", "flame_grilled_wraps", "portuguese_rice_meal", "spicy_chicken_quarters"],
+    "Fresh Produce": ["grilled_chicken_platter"],
+    "Shelf Stable": ["portuguese_rice_meal"],
+  },
+  "PappaRich": {
+    "Cooked Meals": ["nasi_lemak_set", "roti_canai_combo", "chicken_rice_meal", "char_kuey_teow", "curry_laksa_bowl"],
+    "Fresh Produce": ["nasi_lemak_set"],
+    "Shelf Stable": ["nasi_lemak_set"],
+  },
+  "The Chicken Rice Shop": {
+    "Cooked Meals": ["steamed_chicken_rice", "roasted_chicken_combo", "mixed_chicken_platter", "chicken_noodle_soup", "family_chicken_pack"],
+    "Fresh Produce": ["steamed_chicken_rice"],
+    "Shelf Stable": ["family_chicken_pack"],
+  },
+  "Secret Recipe": {
+    "Cooked Meals": ["chocolate_cake_slice", "grilled_chicken_pasta", "beef_lasagna_meal", "creamy_carbonara"],
+    "Fresh Produce": ["pastry_assortment"],
+    "Shelf Stable": ["pastry_assortment"],
+  },
+  "OldTown White Coffee": {
+    "Cooked Meals": ["kopi_breakfast_set", "nasi_lemak_pack", "kaya_toast_combo", "curry_mee_bowl", "white_coffee_snack"],
+    "Fresh Produce": ["kopi_breakfast_set"],
+    "Shelf Stable": ["white_coffee_snack"],
+  },
+  
+  // Supermarkets/Groceries (Fresh Produce / Shelf Stable / Cooked Meals)
+  "AEON BiG": {
+    "Fresh Produce": ["fresh_vegetables_basket", "mixed_fruits_collection"],
+    "Shelf Stable": ["rice_essentials_pack", "canned_goods_variety"],
+    "Cooked Meals": ["bakery_bread_assortment"], // Bakery items
+  },
+  "Giant Hypermarket": {
+    "Fresh Produce": ["fresh_produce_selection"],
+    "Shelf Stable": ["grocery_essentials_pack", "household_staples_bundle", "snacks_beverages_box"],
+    "Cooked Meals": ["frozen_food_variety"], // Ready-to-cook frozen items
+  },
+  "Tesco": {
+    "Fresh Produce": ["organic_produce_basket"],
+    "Shelf Stable": ["international_foods_selection", "baking_essentials_kit"],
+    "Cooked Meals": ["ready_eat_meals"],
+  },
+  "NSK Trade City": {
+    "Fresh Produce": ["local_produce_special"],
+    "Shelf Stable": ["bulk_rice_grains", "affordable_groceries_bundle", "spices_condiments_set", "household_value_pack"],
+    "Cooked Meals": ["affordable_groceries_bundle"], // General food fallback
+  },
+  "Econsave": {
+    "Fresh Produce": ["local_products_selection"],
+    "Shelf Stable": ["budget_groceries_bundle", "essential_food_items", "daily_necessities_box", "value_deals_assortment"],
+    "Cooked Meals": ["budget_groceries_bundle"],
+  },
+  "Mydin": {
+    "Fresh Produce": ["local_products_variety"],
+    "Shelf Stable": ["muslim_friendly_groceries", "wholesale_essentials_pack", "halal_food_selection", "bulk_purchase_bundle"],
+    "Cooked Meals": ["halal_food_selection"],
+  },
+  
+  // Hotels (Cooked Meals / Fresh Produce / Shelf Stable)
+  "Hilton Kuala Lumpur": {
+    "Cooked Meals": ["international_buffet_selection", "wedding_banquet_leftovers", "conference_lunch_packages", "fine_dining_surplus"],
+    "Fresh Produce": ["breakfast_pastry_assortment"], // Pastries/fruit display
+    "Shelf Stable": ["conference_lunch_packages"], // Packaged snacks/drinks
+  },
+  "Sheraton Imperial": {
+    "Cooked Meals": ["business_lunch_buffet", "event_catering_surplus", "international_cuisine_selection", "corporate_dinner_packages"],
+    "Fresh Produce": ["dessert_pastry_collection"],
+    "Shelf Stable": ["event_catering_surplus"],
+  },
+  "Le Meridien Kuala Lumpur": {
+    "Cooked Meals": ["french_cuisine_selection", "luxury_dining_leftovers", "event_catering_packages", "fine_dining_experience"],
+    "Fresh Produce": ["gourmet_pastry_assortment"],
+    "Shelf Stable": ["event_catering_packages"],
+  },
+  "Concorde Hotel Shah Alam": {
+    "Cooked Meals": ["local_cuisine_buffet", "business_event_leftovers", "traditional_malay_dishes", "conference_meal_packages", "banquet_food_selection"],
+    "Fresh Produce": ["local_cuisine_buffet"],
+    "Shelf Stable": ["conference_meal_packages"],
+  },
+  "Glenmarie Hotel & Golf Resort": {
+    "Cooked Meals": ["resort_breakfast_buffet", "golf_event_catering", "outdoor_bbq_leftovers", "family_dining_packages", "recreation_meal_selection"],
+    "Fresh Produce": ["resort_breakfast_buffet"],
+    "Shelf Stable": ["family_dining_packages"],
+  },
+  "One World Hotel": {
+    "Cooked Meals": ["chinese_banquet_leftovers", "corporate_event_packages", "international_buffet_selection", "wedding_dinner_surplus", "business_lunch_assortment"],
+    "Fresh Produce": ["international_buffet_selection"],
+    "Shelf Stable": ["corporate_event_packages"],
+  },
+  "Sunway Resort Hotel": {
+    "Cooked Meals": ["theme_park_catering_pack", "family_buffet_leftovers", "large_event_surplus", "kids_meal_packages", "resort_dining_selection"],
+    "Fresh Produce": ["family_buffet_leftovers"],
+    "Shelf Stable": ["theme_park_catering_pack"],
+  },
+  "Royale Chulan Kuala Lumpur": {
+    "Cooked Meals": ["malay_traditional_banquet", "cultural_event_leftovers", "royal_dining_experience", "heritage_cuisine_pack", "traditional_dessert_collection"],
+    "Fresh Produce": ["cultural_event_leftovers"],
+    "Shelf Stable": ["heritage_cuisine_pack"],
+  }
+};
+
+function getDonorImages(donorName: string, foodCategory: string): string[] {
+  const imagesByDonor = FOOD_IMAGE_CATEGORY_MAP[donorName];
+  if (imagesByDonor) {
+    // Try exact category match first
+    const images = imagesByDonor[foodCategory];
+    if (images && images.length > 0) {
+      return images;
+    }
+    // Fallback to general category for supermarkets if needed
+    if (donorName.includes('AEON') || donorName.includes('Mydin')) {
+      return imagesByDonor['Shelf Stable'] || ["default_food"];
+    }
+  }
+  // Default fallback
+  return ["default_food"];
 }
 
 function getNgoImages(ngoName: string): string[] {
@@ -450,6 +562,15 @@ function getEvidenceImageUrl(imageName: string): string {
   return evidence[imageName] || TEST_IMAGE_URLS.fallbacks.evidence_fallback;
 }
 
+// Helper function to process the result type without conflict
+function processResult<T>(result: T, cleanup: (text: string, name?: string) => string): T {
+    if (typeof result === 'string') {
+        // We assume T is string here when result is string
+        return cleanup(result) as T;
+    }
+    return result;
+}
+
 // ========== ENHANCED GEMINI RETRY FUNCTION ==========
 const AI_CALL_DELAY = 500;
 
@@ -457,29 +578,34 @@ export async function callGeminiWithRetry<T>(
   operation: () => Promise<T>,
   fallback: () => T,
   maxRetries = 2,
-  delay = 500
+  delay = 500,
 ): Promise<T> {
   await new Promise(resolve => setTimeout(resolve, AI_CALL_DELAY));
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      return await operation();
+      const result = await operation();
+      // CRITICAL FIX: Use helper to process result type without conflict
+      // Note: cleanGeminiResponse is called inside processResult now.
+      return processResult(result, cleanGeminiResponse); 
+      
     } catch (error) {
       logger.warn(`Gemini attempt ${attempt}/${maxRetries} failed:`, error instanceof Error ? error.message : String(error));
       
       if (attempt === maxRetries) {
         logger.warn("All Gemini attempts failed, using fallback");
-        return fallback();
+        return fallback() as T; 
       }
       
       const waitTime = delay * attempt;
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
-  return fallback();
+  
+  return fallback() as T;
 }
 
-// ========== 1. UPDATED USER GENERATION WITH FIXED STATUS ==========
+// ========== 1. UPDATED USER GENERATION WITH FIXED RATIOS AND STATUS ==========
 export async function generateUsers(count: number): Promise<UserData[]> {
   const users: UserData[] = [];
   
@@ -492,22 +618,41 @@ export async function generateUsers(count: number): Promise<UserData[]> {
   const shuffledDonors = faker.helpers.shuffle([...allDonors]);
   const shuffledNgos = faker.helpers.shuffle([...MALAYSIAN_NGOS]);
 
-  // ✅ FIXED: Adjusted ratios: More receivers (60%), fewer donors/volunteers
-  const donorCount = Math.max(3, Math.floor(count * 0.2)); // 20% donors (at least 3)
-  const volunteerCount = Math.max(3, Math.floor(count * 0.2)); // 20% volunteers (at least 3)
-  const receiverCount = Math.max(4, count - donorCount - volunteerCount); // 60% receivers (at least 4)
+  // ✅ FIXED: Improved ratios for 50 users: ~8 Donors, ~7 Volunteers, ~35 Receivers
+  const donorCount = Math.max(3, Math.floor(count * 0.16)); // 16% donors (at least 3)
+  const volunteerCount = Math.max(3, Math.floor(count * 0.14)); // 14% volunteers (at least 3)
+  const receiverCount = Math.max(4, count - donorCount - volunteerCount); // 70% receivers (at least 4)
 
   logger.info(`Generating ${count} users: ${donorCount} donors, ${volunteerCount} volunteers, ${receiverCount} receivers`);
 
-  // ✅ FIXED: Simplified status distribution
-  const getStatus = (role: string, index: number, totalInRole: number): 'pending' | 'approved' | 'rejected' => {
+  // ✅ FIXED: Global status counters for better distribution
+  let pendingCreated = 0;
+  let rejectedCreated = 0;
+  const maxPending = 4; // Total pending users across all roles
+  const maxRejected = 2; // Total rejected users across all roles
+
+  const determineStatus = (role: string, index: number): 'pending' | 'approved' | 'rejected' => {
     // First user in each role: pending (for demo)
-    if (index === 0) return 'pending';
+    if (index === 0) {
+      if (pendingCreated < maxPending) {
+        pendingCreated++;
+        return 'pending';
+      }
+    }
     
-    // Second user: rejected
-    if (index === 1 && totalInRole > 2) return 'rejected';
+    // Small chance for rejection (5%) until we hit maxRejected
+    if (rejectedCreated < maxRejected && Math.random() < 0.05) {
+      rejectedCreated++;
+      return 'rejected';
+    }
     
-    // All others: approved (ensuring we have enough approved users)
+    // Small chance for pending (8%) until we hit maxPending
+    if (pendingCreated < maxPending && Math.random() < 0.08) {
+      pendingCreated++;
+      return 'pending';
+    }
+    
+    // Default to approved
     return 'approved';
   };
 
@@ -523,7 +668,7 @@ export async function generateUsers(count: number): Promise<UserData[]> {
     const cleanName = donorTemplate.name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const email = `donor_${cleanName}_${i}_${Date.now()}@test.com`;
     
-    const status = getStatus('donor', i, donorCount);
+    const status = determineStatus('donor', i);
     
     const address = getDonorAddress(donorTemplate.name, location) || {
       street: faker.location.streetAddress(),
@@ -595,7 +740,7 @@ export async function generateUsers(count: number): Promise<UserData[]> {
     
     const email = `vol_${ngoTemplate.name.split(' ')[0].toLowerCase()}_${i}_${Date.now()}@test.com`;
     
-    const status = getStatus('volunteer', i, volunteerCount);
+    const status = determineStatus('volunteer', i);
     
     let address = getVolunteerAddress(ngoTemplate.name)?.officeAddress;
     if (!address) {
@@ -667,7 +812,7 @@ export async function generateUsers(count: number): Promise<UserData[]> {
   for (let i = 0; i < receiverCount; i++) {
     const email = `receiver_${i}_${Date.now()}@test.com`;
     
-    const status = getStatus('receiver', i, receiverCount);
+    const status = determineStatus('receiver', i);
     
     const dietaryOptions = ['halal', 'vegetarian', 'vegan', 'no-pork', 'no-beef', 'diabetic-friendly'];
     const dietaryRestrictions = faker.helpers.arrayElements(
@@ -772,7 +917,7 @@ export async function createUserWithAuth(
     logger.info(`Created ${userData.role} user: ${userData.email} (Status: ${userData.status})`);
     return userWithUid;
   } catch (error: any) {
-    logger.error(`Failed to create user ${index}:`, error);
+    logger.error("Failed to create user:", error);
     throw error;
   }
 }
@@ -801,25 +946,26 @@ export async function generateFoodTemplates(): Promise<Map<string, FoodTemplate[
   if (foodTemplatesCache) return foodTemplatesCache;
 
   const templates = new Map<string, FoodTemplate[]>();
-  const keyCategories = ['Cooked Meals', 'Fresh Produce', 'Shelf-stable'];
+  const keyCategories = ['Cooked Meals', 'Fresh Produce', 'Shelf Stable'];
 
   // Use fallback templates for now to avoid API calls
   for (const category of keyCategories) {
     const categoryTemplates: FoodTemplate[] = [];
     
-    for (let i = 0; i < 3; i++) {
-      const contactPerson = "the manager";
+    // We only need 1 generic template per category now, as the main logic handles naming
+    for (let i = 0; i < 1; i++) {
+      const contactPerson = "[CONTACT_PERSON]";
       
-      const title = `Fresh ${category} Pack ${i + 1}`;
-      const description = `High-quality ${category.toLowerCase()} from a local establishment. Halal certified and ready for distribution.`;
-      const pickupInstructions = `Please collect from the establishment at the designated pickup area. Ask for ${contactPerson}.`;
+      const title = `${category} Surplus Package`; // Generic template title
+      const description = `High-quality ${category.toLowerCase()} items sourced from [DONOR_NAME]. These items are carefully handled and ready for immediate distribution.`;
+      const pickupInstructions = `Please proceed to the designated counter at [DONOR_NAME] and ask for ${contactPerson}. Please quote the order reference number upon collection.`;
       
       categoryTemplates.push({
         title,
         description,
         pickupInstructions,
         category,
-        tags: [category.toLowerCase(), 'halal', 'malaysian'],
+        tags: [category.toLowerCase().replace(/\s/g, '-'), 'halal', 'malaysian'],
         startTime: '10:00',
         endTime: '18:00'
       });
@@ -833,30 +979,34 @@ export async function generateFoodTemplates(): Promise<Map<string, FoodTemplate[
   return templates;
 }
 
+// ⛔ CRITICAL CAMPAIGN FIX: Use only system categories
 export async function generateCampaignTemplates(): Promise<CampaignTemplate[]> {
   if (campaignTemplatesCache) return campaignTemplatesCache;
 
   const templates: CampaignTemplate[] = [];
   
-  const types = [
-    {title: "Community Food Distribution Drive", category: "Mixed Items"},
-    {title: "Fresh Produce Program", category: "Fresh Produce"},
-    {title: "Hot Meal Service", category: "Cooked Meals"},
-    {title: "Emergency Food Relief", category: "Emergency Relief"},
-    {title: "Weekly Food Support", category: "Mixed Items"},
-    {title: "Elderly Nutrition Program", category: "Targeted Support"},
-    {title: "School Meal Initiative", category: "Education Support"},
-    {title: "Festival Food Drive", category: "Community Outreach"}
+  // MAPPING THE DESCRIPTIVE THEME (for description lookup) to the SYSTEM CATEGORY
+  const campaignTypeMapping = [
+    { title: "Community Food Distribution Drive", descriptiveCategory: "Community Outreach", systemCategory: "Mixed Items" },
+    { title: "Fresh Produce Program for Families", descriptiveCategory: "Fresh Produce", systemCategory: "Mixed Items" },
+    { title: "Hot Meal Service for Shelters", descriptiveCategory: "Cooked Meals", systemCategory: "Mixed Items" },
+    
+    // Strict System Inventory Categories:
+    { title: "Canned Goods Donation Drive", descriptiveCategory: "Canned Food", systemCategory: "Canned Items" },
+    { title: "Packaged Dry Food Collection", descriptiveCategory: "Packaged items", systemCategory: "Packaged Food" },
+    { title: "Basic Grocery Staples Outreach", descriptiveCategory: "Mixed Items", systemCategory: "Mixed Items" }
   ];
   
   // Use fallback descriptions
-  for (const t of types) {
-    const fallbackDescs = getCampaignDescriptionsFallback(t.category);
+  for (const t of campaignTypeMapping) {
+    // We use the descriptiveCategory for fetching the fallback description (for quality/relevance)
+    const fallbackDescs = getCampaignDescriptionsFallback(t.descriptiveCategory);
     
     templates.push({
       title: t.title, 
       description: faker.helpers.arrayElement(fallbackDescs), 
-      category: t.category
+      // Use the strict systemCategory for the final output
+      category: t.systemCategory 
     });
   }
   
@@ -911,7 +1061,7 @@ export async function generateFoodListingsOptimized(
   for (let i = 0; i < count; i++) {
   const donor = donors[i % donors.length];
   
-  // FIXED DONOR MATCHING LOGIC - Use exact matching
+  // FIXED DONOR MATCHING LOGIC - Use better matching
   const allDonors = [
     ...MALAYSIAN_DONORS.restaurants,
     ...MALAYSIAN_DONORS.supermarkets,
@@ -921,15 +1071,16 @@ export async function generateFoodListingsOptimized(
   // Find donor by matching the name (handle duplicate suffixes)
   const orgName = donor.profile.orgName || "";
   let donorDetails = allDonors.find(d => {
+    // 1. Exact match (handles names without duplicates)
+    if (orgName === d.name) return true;
+    
     const cleanOrgName = orgName.replace(/\s+\d+$/, ''); // Remove trailing numbers like "KFC Malaysia 1"
     
-    // Try exact match first
+    // 2. Cleaned name match (handles names with duplicates)
     if (cleanOrgName === d.name) return true;
-    
-    // Then try partial match
-    if (cleanOrgName.includes(d.name) || d.name.includes(cleanOrgName.split(' ')[0])) {
-      return true;
-    }
+
+    // 3. Simple inclusion (e.g., "KFC" in "KFC Malaysia")
+    if (orgName.includes(d.name) || d.name.includes(orgName.split(' ')[0])) return true;
     
     return false;
   });
@@ -963,13 +1114,14 @@ export async function generateFoodListingsOptimized(
     aiCallCount++;
     if (aiCallCount > 1 && aiCallCount % 3 === 0) await new Promise(r => setTimeout(r, 800));
 
-    const donorImages = getDonorImages(donorDetails.name);
-    const selectedImage = faker.helpers.arrayElement(donorImages);
+    // CRITICAL IMAGE FIX: Use the new category-aware function
+    const donorImageKeys = getDonorImages(donorDetails.name, category); 
+    const selectedImageKey = faker.helpers.arrayElement(donorImageKeys);
     
     try {
       const titleResult = await callGeminiWithRetry(
         async () => {
-          return await geminiService.generateIndividualFoodTitle(donorDetails, category, selectedImage);
+          return await geminiService.generateIndividualFoodTitle(donorDetails, category, selectedImageKey);
         },
         () => {
           const fallbackTitles = getFoodTitlesFallback(donorDetails.name);
@@ -983,7 +1135,7 @@ export async function generateFoodListingsOptimized(
       
       const descriptionResult = await callGeminiWithRetry(
         async () => {
-          return await geminiService.generateFoodDescription(title, donorDetails, category, selectedImage);
+          return await geminiService.generateFoodDescription(title, donorDetails, category, selectedImageKey);
         },
         () => getFoodDescriptionFallback(donorDetails.name),
         1,
@@ -1004,6 +1156,7 @@ export async function generateFoodListingsOptimized(
       pickupInstructions = pickupResult;
 
       // ✅ FIXED: Provide default empty string if orgName is undefined
+      // Note: cleanGeminiResponse is called inside callGeminiWithRetry via processResult.
       title = cleanGeminiResponse(title, orgName || donorDetails.name);
       description = cleanGeminiResponse(description, orgName || donorDetails.name);
       pickupInstructions = cleanGeminiResponse(pickupInstructions, orgName || donorDetails.name);
@@ -1018,11 +1171,17 @@ export async function generateFoodListingsOptimized(
     
     tags = generateFoodTags(category, donorDetails.type, donorDetails.specialties || []);
   } else if (templateList && templateList.length > 0) {
-    // TEMPLATE MODE - ACTUALLY USE TEMPLATES
+    // TEMPLATE MODE - CRITICAL FIX: Inject actual donor name and contact info
     const template = faker.helpers.arrayElement(templateList);
-    title = template.title.replace(/Local Restaurant/g, donorDetails.name);
-    description = template.description.replace(/local establishment/g, donorDetails.name);
-    pickupInstructions = template.pickupInstructions.replace(/the establishment/g, donorDetails.name);
+    const donorDisplayName = orgName || donorDetails.name;
+    const contactPerson = donor.profile.contactPerson || 'Staff';
+
+    title = template.title.replace(/\[DONOR_NAME\]/g, donorDisplayName);
+    description = template.description.replace(/\[DONOR_NAME\]/g, donorDisplayName);
+    pickupInstructions = template.pickupInstructions
+      .replace(/\[DONOR_NAME\]/g, donorDisplayName)
+      .replace(/\[CONTACT_PERSON\]/g, contactPerson);
+      
     tags = [...template.tags];
   } else {
     // FALLBACK MODE (NO AI, NO TEMPLATE)
@@ -1039,8 +1198,8 @@ export async function generateFoodListingsOptimized(
   description = description.replace(/\[\[NAME\]\]/g, displayName).trim();
   pickupInstructions = pickupInstructions.replace(/\[\[NAME\]\]/g, displayName).trim();
 
-  // IMAGE SELECTION
-  const donorImages = getDonorImages(donorDetails.name);
+  // IMAGE SELECTION (Using the selected key from above)
+  const donorImages = getDonorImages(donorDetails.name, category);
   const selectedImage = faker.helpers.arrayElement(donorImages);
   const imageUrl = getDonorImageUrl(donorDetails.name, selectedImage);
 
@@ -1169,18 +1328,34 @@ export async function generateFoodListingsOptimized(
 
 // ========== HELPER FUNCTIONS FOR FOOD ==========
 function selectFoodCategory(donorType: string): string {
+  const rand = Math.random();
+  
   if (donorType === 'supermarket' || donorType === 'grocery') {
-    const rand = Math.random();
+    // Supermarkets/Groceries: 40% Shelf, 35% Fresh, 25% Cooked (ensures Shelf Stable diversity)
     if (rand < 0.4) {
+      return faker.helpers.arrayElement(FOOD_CATEGORIES.SHELF_STABLE.items); 
+    } else if (rand < 0.75) {
       return faker.helpers.arrayElement(FOOD_CATEGORIES.FRESH_PRODUCE.items);
-    } else if (rand < 0.7) {
-      return faker.helpers.arrayElement(FOOD_CATEGORIES.SHELF_STABLE.items);
     } else {
       return faker.helpers.arrayElement(FOOD_CATEGORIES.COOKED_MEALS.items);
     }
+  } else if (donorType === 'hotel') {
+    // Hotels: 60% Cooked, 25% Shelf, 15% Fresh 
+    if (rand < 0.6) {
+      return faker.helpers.arrayElement(FOOD_CATEGORIES.COOKED_MEALS.items);
+    } else if (rand < 0.85) {
+      return faker.helpers.arrayElement(FOOD_CATEGORIES.SHELF_STABLE.items); 
+    } else {
+      return faker.helpers.arrayElement(FOOD_CATEGORIES.FRESH_PRODUCE.items);
+    }
   } else {
-    // Restaurants and hotels
-    return faker.helpers.arrayElement(FOOD_CATEGORIES.COOKED_MEALS.items);
+    // Restaurants: 90% Cooked, 10% Shelf Stable (e.g., canned drinks, desserts, packaged sides)
+    // CRITICAL FIX: Eliminate Fresh Produce generation here.
+    if (rand < 0.9) {
+      return faker.helpers.arrayElement(FOOD_CATEGORIES.COOKED_MEALS.items);
+    } else {
+      return faker.helpers.arrayElement(FOOD_CATEGORIES.SHELF_STABLE.items);
+    }
   }
 }
 
@@ -1191,16 +1366,16 @@ function generateFoodTags(category: string, donorType: string, specialties: stri
   if (category.includes('Fresh') || category.includes('Vegetable') || category.includes('Fruit')) {
     tags.push('fresh-produce', 'healthy', 'vegetarian');
   } else if (category.includes('Cooked') || category.includes('Prepared')) {
-    tags.push('ready-to-eat', 'hot-meals');
+    tags.push('ready-to-eat', 'hot-meals', 'freshly-prepared'); // 'freshly-prepared' only for cooked meals
   } else if (category.includes('Shelf') || category.includes('Canned')) {
-    tags.push('non-perishable', 'long-shelf-life');
+    tags.push('non-perishable', 'long-shelf-life', 'packaged-food', 'canned-goods');
   }
   
   // Add donor type tags
   if (donorType === 'hotel') {
     tags.push('hotel-quality', 'buffet');
   } else if (donorType === 'restaurant') {
-    tags.push('restaurant-quality', 'freshly-prepared');
+    tags.push('restaurant-quality');
   } else if (donorType === 'supermarket' || donorType === 'grocery') {
     tags.push('grocery', 'packaged');
   }
@@ -1293,30 +1468,36 @@ export async function generateCampaignsOptimized(
       aiCallCount++;
       if (aiCallCount > 1 && aiCallCount % 3 === 0) await new Promise(r => setTimeout(r, 1000));
       
+      // CRITICAL FIX: Only use themes that map to the three required categories
       const campaignType = faker.helpers.arrayElement([
-        { title: "Community Food Distribution Drive", category: "Mixed Items" },
-        { title: "Fresh Produce Program", category: "Fresh Produce" },
-        { title: "Hot Meal Service", category: "Cooked Meals" },
-        { title: "Emergency Food Relief", category: "Emergency Relief" },
-        { title: "Weekly Food Support Program", category: "Community Outreach" },
-        { title: "Elderly Nutrition Assistance", category: "Elderly Support" },
-        { title: "School Meal Initiative", category: "Education Support" },
-        { title: "Festival Food Drive", category: "Festival Program" }
+        // Mixed Items Themes
+        { title: "Community Food Distribution Drive", descriptiveCategory: "Community Outreach", systemCategory: "Mixed Items" },
+        { title: "Fresh Produce Program for B40", descriptiveCategory: "Fresh Produce", systemCategory: "Mixed Items" },
+        { title: "Hot Meal Service for Homeless", descriptiveCategory: "Cooked Meals", systemCategory: "Mixed Items" },
+        
+        // Canned Food Themes
+        { title: "Emergency Food Relief Operation", descriptiveCategory: "Emergency Relief", systemCategory: "Canned Items" },
+        
+        // Packaged Items Themes
+        { title: "Weekly Grocery Support Program", descriptiveCategory: "Shelf Stable", systemCategory: "Packaged Food" },
+        { title: "Elderly Nutrition Program", descriptiveCategory: "Elderly Support", systemCategory: "Packaged Food" },
+        { title: "School Meal Initiative", descriptiveCategory: "Education Support", systemCategory: "Packaged Food" },
+        { title: "Festival Food Drive", descriptiveCategory: "Community Outreach", systemCategory: "Mixed Items" }
       ]);
       
       title = campaignType.title;
-      category = campaignType.category;
+      category = campaignType.systemCategory;
       
       try {
         const rawDescription = await callGeminiWithRetry(
           async () => {
             return await geminiService.generateCampaignDescription(
               { ...ngoDetails, name: realOrgName }, 
-              campaignType
+              { title: campaignType.title, category: campaignType.descriptiveCategory } // Use descriptive category for better AI context
             );
           },
           () => {
-            const fallbackDescs = getCampaignDescriptionsFallback(category);
+            const fallbackDescs = getCampaignDescriptionsFallback(campaignType.descriptiveCategory);
             return faker.helpers.arrayElement(fallbackDescs).replace("[[NAME]]", realOrgName);
           },
           1,
@@ -1335,7 +1516,7 @@ export async function generateCampaignsOptimized(
     } else {
       // FALLBACK
       title = "Community Food Drive";
-      category = "Mixed Items";
+      category = "Mixed Items"; // Fallback to a system category
       description = `${realOrgName} is organizing a food drive to support local families in need.`;
     }
 
@@ -1447,7 +1628,7 @@ export async function generateCampaignsOptimized(
     const campaignData: CampaignData = {
       title: title.replace(/Here are.*/i, '').trim(),
       description: description.replace(/Here are.*/i, '').trim(),
-      category,
+      category, // Already set to Canned food, Packaged items, or Mixed items
       campaignDate: campaignDate.toISOString().split("T")[0],
       startTime: "10:00",
       endTime: "14:00",
@@ -1937,7 +2118,7 @@ async function createRandomRating(target: any, rater: UserData, reservationId: s
     raterUserType: rater.role,
     
     rating: ratingVal,
-    comment: comment.replace(/Here are.*/i, '').trim(),
+    comment: cleanGeminiResponse(comment.replace(/Here are.*/i, '').trim()), // Clean final comment
     reservationId: reservationId,
     createdAt: faker.date.recent(30),
     updatedAt: new Date(),
@@ -2019,7 +2200,7 @@ async function createCampaignRating(campaign: any, user: UserData, registrationI
     raterUserType: 'receiver',
     
     rating: ratingVal,
-    comment: comment.replace(/Here are.*/i, '').trim(),
+    comment: cleanGeminiResponse(comment.replace(/Here are.*/i, '').trim()), // Clean final comment
     registrationId: registrationId,
     createdAt: faker.date.recent(30),
     updatedAt: new Date(),
@@ -2249,7 +2430,7 @@ export async function generateReports(
         email: reporter.email
       },
       reason: reason,
-      description: description.trim(),
+      description: cleanGeminiResponse(description.trim()),
       severity: severity,
       evidenceUrls: [evidenceUrl],
       status: reportStatus,
@@ -2321,7 +2502,7 @@ export async function generateReports(
         email: reporter.email
       },
       reason: reason,
-      description: description.trim(),
+      description: cleanGeminiResponse(description.trim()),
       severity: severity,
       evidenceUrls: [evidenceUrl],
       status: reportStatus,
@@ -2383,7 +2564,7 @@ export async function generateReports(
         email: reporter.email
       },
       reason: reason,
-      description: description.trim(),
+      description: cleanGeminiResponse(description.trim()),
       severity: severity,
       evidenceUrls: [evidenceUrl],
       status: reportStatus,

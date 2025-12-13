@@ -1,6 +1,7 @@
 // api-backed/admin-campaigns.ts
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { sendDualNotification } from '../NotificationFolder/notificationUtils';
 
 // Interfaces (you can export these if needed elsewhere, but not necessary)
 interface DeleteCampaignData {
@@ -126,30 +127,48 @@ export const adminApproveCampaign = functions.https.onCall<
 ApproveCampaignData
 >(async (request): Promise<{success: boolean; message: string}> => {
   const {data, auth} = request;
+  
   if (!auth) {
-    throw new functions.https.HttpsError("unauthenticated", "Auth required");
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated.");
   }
+
   const isAdmin = await verifyAdmin(auth.uid);
   if (!isAdmin) {
     throw new functions.https.HttpsError("permission-denied", "Admin required");
   }
+
   const {campaignId} = data;
-  if (!campaignId) {
-    throw new functions.https.HttpsError("invalid-argument", "Campaign ID required");
-  }
   try {
-    const campaignDoc = await admin.firestore()
-      .collection("campaigns").doc(campaignId).get();
+    const campaignRef = admin.firestore().collection("campaigns").doc(campaignId);
+    const campaignDoc = await campaignRef.get();
     if (!campaignDoc.exists) {
       throw new functions.https.HttpsError("not-found", "Campaign not found");
     }
+    
+    const campaignData = campaignDoc.data();
+    const organizerId = campaignData?.organizerId;
+    const campaignTitle = campaignData?.title || "Campaign";
 
-    await admin.firestore().collection("campaigns").doc(campaignId).update({
-      status: "ongoing",
+    await campaignRef.update({
+      status: "approved", 
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    return {success: true, message: "Campaign approved and set to ongoing"};
+    // SEND NOTIFICATION (FCM + Firestore Doc)
+    if (organizerId) {
+        await sendDualNotification({
+            recipientId: organizerId,
+            relatedEntityId: campaignId,
+            relatedEntityType: 'campaigns',
+            title: "Campaign Approved! 🎉",
+            message: `Your campaign, "${campaignTitle}", has been approved and is now open for registration.`,
+            notificationType: 'campaign_status',
+            fullDetails: `Status changed to Approved by Admin ${auth.uid}.`
+        });
+    }
+    // -------------------------
+
+    return {success: true, message: "Campaign approved and set to approved"};
   } catch (error) {
     console.error("Error in adminApproveCampaign:", error);
     throw new functions.https.HttpsError("internal", "Approve failed");
@@ -161,29 +180,48 @@ export const adminRejectCampaign = functions.https.onCall<
 RejectCampaignData
 >(async (request): Promise<{success: boolean; message: string}> => {
   const {data, auth} = request;
+  
   if (!auth) {
-    throw new functions.https.HttpsError("unauthenticated", "Auth required");
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated.");
   }
+
   const isAdmin = await verifyAdmin(auth.uid);
   if (!isAdmin) {
     throw new functions.https.HttpsError("permission-denied", "Admin required");
   }
+
   const {campaignId, reason} = data;
-  if (!campaignId) {
-    throw new functions.https.HttpsError("invalid-argument", "Campaign ID required");
-  }
   try {
-    const campaignDoc = await admin.firestore()
-      .collection("campaigns").doc(campaignId).get();
+    const campaignRef = admin.firestore().collection("campaigns").doc(campaignId);
+    const campaignDoc = await campaignRef.get();
     if (!campaignDoc.exists) {
       throw new functions.https.HttpsError("not-found", "Campaign not found");
     }
 
-    await admin.firestore().collection("campaigns").doc(campaignId).update({
-      status: "cancelled",
-      rejectionReason: reason || "Rejected by admin",
+    const campaignData = campaignDoc.data();
+    const organizerId = campaignData?.organizerId;
+    const campaignTitle = campaignData?.title || "Campaign";
+    const rejectionReason = reason || "Rejected by admin";
+
+    await campaignRef.update({
+      status: "cancelled", // Using cancelled for rejection
+      rejectionReason: rejectionReason,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+
+    // SEND NOTIFICATION (FCM + Firestore Doc)
+    if (organizerId) {
+        await sendDualNotification({
+            recipientId: organizerId,
+            relatedEntityId: campaignId,
+            relatedEntityType: 'campaigns',
+            title: "Campaign Rejected ❌",
+            message: `Your campaign, "${campaignTitle}", was rejected by the administration.`,
+            notificationType: 'campaign_status',
+            fullDetails: `Reason: ${rejectionReason}`
+        });
+    }
+    // -------------------------
 
     return {success: true, message: "Campaign rejected"};
   } catch (error) {
@@ -235,5 +273,85 @@ UpdateCampaignStatusData
   } catch (error) {
     console.error("Error in adminUpdateCampaignStatus:", error);
     throw new functions.https.HttpsError("internal", "Status update failed");
+  }
+});
+
+export const adminOrUserCancelCampaign = functions.https.onCall<
+RejectCampaignData // Reuse interface
+>(async (request): Promise<{success: boolean; message: string}> => {
+  const {data, auth} = request;
+  
+  if (!auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated.");
+  }
+
+  const {campaignId, reason: cancellationReason} = data;
+  try {
+    const campaignRef = admin.firestore().collection("campaigns").doc(campaignId);
+    
+    // 1. Get data and verify ownership/admin
+    const campaignDoc = await campaignRef.get();
+    if (!campaignDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Campaign not found");
+    }
+
+    const campaignData = campaignDoc.data();
+    const organizerId = campaignData?.organizerId;
+    const isOrganizer = auth.uid === organizerId;
+    const isAdmin = await verifyAdmin(auth.uid);
+
+    if (!isOrganizer && !isAdmin) {
+        throw new functions.https.HttpsError("permission-denied", "Only the organizer or admin can cancel this campaign.");
+    }
+    
+    const campaignTitle = campaignData?.title || "Campaign";
+    const reasonText = cancellationReason || (isOrganizer ? "Cancelled by organizer" : `Cancelled by Admin ${auth.uid}`);
+
+    // 2. Update status
+    await campaignRef.update({
+      status: "cancelled",
+      cancellationReason: reasonText,
+      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+      cancelledBy: auth.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 3. CLEANUP: Find and cancel active campaign registrations
+    const registrationsSnapshot = await admin.firestore()
+        .collection('campaignRegistrations')
+        .where('campaignId', '==', campaignId)
+        .where('status', 'in', ['registered', 'pending']) // Active registrations
+        .get();
+
+    const cleanupPromises = registrationsSnapshot.docs.map(doc => 
+        doc.ref.update({
+            status: 'cancelled',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        })
+    );
+    await Promise.all(cleanupPromises);
+    console.log(`✅ Cancelled ${registrationsSnapshot.size} active registrations for campaign ${campaignId}`);
+
+
+    // 4. SEND NOTIFICATION (Organizer/Admin to Organizer, and separate trigger for registrants)
+    if (isOrganizer && !isAdmin) {
+        // Organizer doesn't need a dual notification, just a success message.
+        // The transactionNotification listener handles registrant notifications.
+    } else if (isAdmin) {
+        await sendDualNotification({
+            recipientId: organizerId,
+            relatedEntityId: campaignId,
+            relatedEntityType: 'campaigns',
+            title: "Campaign Cancelled ❌",
+            message: `Your active campaign, "${campaignTitle}", was cancelled by the administration.`,
+            notificationType: 'campaign_status',
+            fullDetails: `Reason: ${reasonText}`
+        });
+    }
+
+    return {success: true, message: "Campaign cancelled and registrations cleaned up."};
+  } catch (error) {
+    console.error("Error in adminOrUserCancelCampaign:", error);
+    throw new functions.https.HttpsError("internal", "Cancellation failed");
   }
 });

@@ -2,6 +2,28 @@
 
 import { LocationService, type LocationCoords } from '../../UnifiedFolder/LocationFolder/LocationService';
 
+// =====================================================================
+// HELPER FUNCTION: Check if an item is past its grace period
+// NOTE: This uses the 24-hour grace period and UTC+8 time zone 
+// assumptions derived from foodStatusManager.ts and campaignStatusManager.ts.
+// =====================================================================
+const isPastGracePeriod = (dateStr?: string, timeStr?: string): boolean => {
+  if (!dateStr || !timeStr) return false;
+  
+  // 24 hours grace period for ratings
+  const GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
+  
+  // Assume times are in Malaysia time (UTC+8)
+  const endDateTime = new Date(`${dateStr}T${timeStr}:00+08:00`);
+  const completionDeadline = new Date(endDateTime.getTime() + GRACE_PERIOD_MS);
+  
+  const now = new Date();
+  
+  // Return true if the item is past the completion deadline
+  return completionDeadline < now;
+};
+// =====================================================================
+
 export interface SortableItem {
   id?: string;
   geolocation?: {
@@ -13,6 +35,9 @@ export interface SortableItem {
   donorId?: string;
   organizerId?: string; // For campaigns
   title?: string;
+  availableDate?: string; // For food
+  campaignDate?: string; // For campaigns
+  endTime?: string;
   [key: string]: any;
 }
 
@@ -138,7 +163,8 @@ export class DashboardService {
         if (result.length >= limit) break;
         
         // Skip items already in result
-        if (!result.includes(item)) {
+        // We use a simple check here since the filtering is handled by the caller
+        if (!result.includes(item)) { 
           result.push(item);
           const donorId = item.donorId || item.organizerId;
           console.log(`➕ Added additional item: ${item.title} from donor ${donorId}`);
@@ -183,7 +209,7 @@ export class DashboardService {
   }
 
   /**
-   * Enhanced version that handles the case when all ratings are equal
+   * Enhanced version that handles the case when all ratings are equal AND filters expired items.
    */
   static getTopDashboardItemsEnhanced<T extends SortableItem>(
     items: T[], 
@@ -195,22 +221,31 @@ export class DashboardService {
       return [];
     }
 
+    // *** NEW FILTER: Filter out items that are past the grace period ***
+    const nonExpiredItems = items.filter(item => 
+      !isPastGracePeriod(item.availableDate || item.campaignDate, item.endTime)
+    );
+    
+    console.log(`🧹 Filtered ${items.length - nonExpiredItems.length} expired items. Starting with ${nonExpiredItems.length} items.`);
+    // ------------------------------------------------------------------
+
+
     // If we have very few items, just return them ALL
-    if (items.length <= limit) {
-      console.log(`📦 Few items (${items.length} <= ${limit}), returning all`);
+    if (nonExpiredItems.length <= limit) {
+      console.log(`📦 Few items (${nonExpiredItems.length} <= ${limit}), returning all`);
       if (userLocation) {
-        return this.sortByRatingAndDistance(items, userLocation);
+        return this.sortByRatingAndDistance(nonExpiredItems, userLocation);
       } else {
-        return this.sortByRating(items);
+        return this.sortByRating(nonExpiredItems);
       }
     }
 
     let sortedItems: T[];
     
     if (userLocation) {
-      sortedItems = this.sortByRatingAndDistance(items, userLocation);
+      sortedItems = this.sortByRatingAndDistance(nonExpiredItems, userLocation);
     } else {
-      sortedItems = this.sortByRating(items);
+      sortedItems = this.sortByRating(nonExpiredItems);
     }
 
     // Check if all ratings are equal (or all 0)

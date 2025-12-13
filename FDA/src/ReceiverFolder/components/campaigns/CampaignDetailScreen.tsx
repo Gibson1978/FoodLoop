@@ -1,3 +1,5 @@
+// CampaignDetailScreen.tsx - UPDATED
+
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../UnifiedFolder/ui/card";
 import { Button } from "../../../UnifiedFolder/ui/button";
@@ -24,11 +26,36 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
-  Phone
+  Phone,
+  Clock
 } from "lucide-react";
 import { getCampaignById, type Campaign } from "../../../Firebase/campaignUsers";
 import { openExternalMapWithAddress } from "../../../UnifiedFolder/LocationFolder/ExternalMap";
 import { registerForCampaign } from '../../../Firebase/reservationService';
+// FIX: Imports for secure contact and Firestore rating fetch
+import { getContactByUserId as fetchSecureContactDetails } from "../../../Firebase/auth";
+import { doc, getDoc } from 'firebase/firestore'; 
+import { db } from '../../../Firebase/firebase'; // Assuming 'db' is exported from firebase.ts
+
+
+interface UserRating {
+  rating: number;
+  totalRatings: number;
+}
+
+// *** NEW HELPER FUNCTION: Fetch User Rating ***
+const fetchUserRating = async (userId: string): Promise<UserRating> => {
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    if (userDoc.exists()) {
+        const data = userDoc.data();
+        return {
+            rating: data.rating as number || 0,
+            totalRatings: data.totalRatings as number || 0,
+        };
+    }
+    return { rating: 0, totalRatings: 0 };
+};
 
 interface CampaignDetailScreenProps {
   campaignId: string;
@@ -52,8 +79,13 @@ export function CampaignDetailScreen({
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
 
+  // *** NEW STATE ***
+  const [organizerUserRating, setOrganizerUserRating] = useState<UserRating>({ rating: 0, totalRatings: 0 });
+  const [organizerPhoneNumber, setOrganizerPhoneNumber] = useState<string | null>(null);
+
   // Fetch campaign data from Firebase
   useEffect(() => {
+    // ... (Existing code for fetching campaign data)
     const unsubscribe = getCampaignById(
       campaignId,
       (campaignData) => {
@@ -68,6 +100,35 @@ export function CampaignDetailScreen({
 
     return () => unsubscribe();
   }, [campaignId]);
+
+  // *** NEW EFFECT: Fetch Organizer User Rating ***
+  useEffect(() => {
+    if (campaign?.organizerId) {
+        fetchUserRating(campaign.organizerId)
+            .then(setOrganizerUserRating)
+            .catch(error => {
+                console.error("Error fetching organizer user rating:", error);
+            });
+    }
+  }, [campaign?.organizerId]);
+  
+  // *** Existing useEffect to fetch organizer phone number (FIXED) ***
+  useEffect(() => {
+    if (campaign?.organizerId) {
+      fetchSecureContactDetails( 
+        campaign.organizerId, 
+        campaignId,           
+        'campaign'            
+      )
+        .then(setOrganizerPhoneNumber)
+        .catch(error => {
+          console.error("Error fetching organizer phone number:", error);
+          setOrganizerPhoneNumber(null);
+        });
+    } else {
+      setOrganizerPhoneNumber(null);
+    }
+  }, [campaign?.organizerId, campaignId]); 
 
   // Swipe gesture handlers
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -138,16 +199,23 @@ export function CampaignDetailScreen({
     }
   };
 
+  // *** UPDATED handleCallOrganizer ***
   const handleCallOrganizer = () => {
-    alert(`Calling ${campaign?.organizerName || 'organizer'}...`);
+    if (organizerPhoneNumber) {
+      window.location.href = `tel:+${organizerPhoneNumber}`;
+    } else {
+      alert("Organizer contact information not available");
+    }
   };
 
+  // *** UPDATED handleMessageOrganizer ***
   const handleMessageOrganizer = () => {
-    const phoneNumber = "";
-    const message = `Hi, I'm interested in your campaign: ${campaign?.title}`;
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
-    
-    if (phoneNumber) {
+    if (organizerPhoneNumber && campaign) {
+      // Clean the phone number for WhatsApp
+      const cleanNumber = organizerPhoneNumber.replace(/\D/g, ''); 
+      const message = `Hi, I'm interested in your campaign: ${campaign.title} (ID: ${campaign.id}).`;
+      const whatsappUrl = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
+      
       window.open(whatsappUrl, '_blank');
     } else {
       alert("Organizer contact information not available");
@@ -218,6 +286,39 @@ export function CampaignDetailScreen({
     return Building2;
   };
 
+  // FIX 1: Updated getExpiryInfo equivalent for Campaign to use explicit UTC+8 time zone
+  const getExpiryInfo = () => {
+    if (!campaign?.campaignDate || !campaign.endTime) return { text: "Check availability", color: "text-gray-600 bg-gray-50 border-gray-200" };
+    
+    // Explicitly create the date/time assuming UTC+8, matching server logic
+    const endDateTime = new Date(`${campaign.campaignDate}T${campaign.endTime}:00+08:00`);
+    const now = new Date();
+    
+    const timeDiff = endDateTime.getTime() - now.getTime(); // Difference in milliseconds
+    const hoursDiff = Math.ceil(timeDiff / (1000 * 60 * 60)); // Difference in hours, rounded up
+    
+    // Determine the text based on hours remaining
+    if (hoursDiff <= 0) {
+      const hoursAgo = Math.floor(Math.abs(timeDiff) / (1000 * 60 * 60));
+      
+      if (hoursAgo >= 24) { // Arbitrary point past 24 hours to clearly show 'Expired'
+        return { text: "Event Ended", color: "text-red-800 bg-red-100 border-red-300" };
+      }
+      return { text: `Ended (${hoursAgo}h ago)`, color: "text-red-600 bg-red-50 border-red-200" };
+    } 
+    
+    // Display remaining time
+    if (hoursDiff <= 24) {
+      return { text: `Starts in ${hoursDiff} hour${hoursDiff !== 1 ? 's' : ''}`, color: "text-red-600 bg-red-50 border-red-200" };
+    } else {
+      const daysDiff = Math.ceil(hoursDiff / 24);
+      return { text: `Starts in ${daysDiff} day${daysDiff !== 1 ? 's' : ''}`, color: "text-green-600 bg-green-50 border-green-200" };
+    }
+  };
+  
+  const expiryInfo = getExpiryInfo();
+
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background pb-20 flex items-center justify-center">
@@ -269,9 +370,10 @@ export function CampaignDetailScreen({
       <div className="px-4 sm:px-6 space-y-4 sm:space-y-6">
         {/* Image Carousel with Swipe */}
         <div className="relative">
+          {/* FIX 2: Standardize Image Container Size */}
           <div 
             ref={imageContainerRef}
-            className="aspect-video rounded-xl overflow-hidden relative"
+            className="w-full h-60 sm:h-80 rounded-xl overflow-hidden relative" // FIXED: Enforce height
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -279,7 +381,7 @@ export function CampaignDetailScreen({
             <ImageWithFallback
               src={campaign.images?.[currentImageIndex] || '/placeholder-campaign.jpg'}
               alt={campaign.title}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover" // Ensures image fills the container
             />
             
             {/* Navigation Arrows */}
@@ -331,25 +433,36 @@ export function CampaignDetailScreen({
           <CardContent className="p-4 sm:p-6">
             <div className="space-y-3 sm:space-y-4">
               <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <CategoryIcon className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
+                {/* Category badge with icon */}
+                <div className="flex items-center gap-1 mb-2">
+                  <CategoryIcon className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 flex-shrink-0" />
                   <Badge variant="outline" className="text-xs sm:text-sm">
                     {getCategoryLabel(campaign.category)}
+                  </Badge>
+                </div>
+                
+                {/* Expiry and spots badges on a new line */}
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge className={`${expiryInfo.color} border text-xs sm:text-sm`}>
+                    <Clock className="w-3 h-3 mr-1" />
+                    {expiryInfo.text}
                   </Badge>
                   <Badge className={`${getUrgencyColor()} border text-xs sm:text-sm`}>
                     <Users className="w-3 h-3 mr-1" />
                     {campaign.availableSpots} spots left
                   </Badge>
                 </div>
+                
                 <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{campaign.title}</h1>
                 <div className="flex items-center space-x-2 sm:space-x-4 mt-2">
                   <Badge variant="outline" className="flex items-center gap-1 text-xs sm:text-sm bg-amber-50 text-amber-700 border-amber-200">
                     <Users className="w-3 h-3" />
                     {campaign.totalSpots} total spots
                   </Badge>
+                  {/* FIX RATING: Display rating if it's greater than 0 */}
                   <div className="flex items-center text-sm text-gray-600">
                     <Star className="w-3 h-3 sm:w-4 sm:h-4 mr-1 fill-current text-yellow-500" />
-                    {campaign.rating?.toFixed(1) || 'New'}
+                    {(campaign.rating && campaign.rating > 0) ? campaign.rating.toFixed(1) : 'New'}
                   </div>
                 </div>
               </div>
@@ -396,24 +509,39 @@ export function CampaignDetailScreen({
                   )}
                 </div>
                 <div className="flex items-center space-x-1 sm:space-x-2 mt-1">
-                  <DonorTypeIcon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
+                  <DonorTypeIcon className="mr-2 w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
                   <span className="text-sm sm:text-base text-gray-600 capitalize truncate">
                     {campaign.organizerOrg || 'Food Distributor'}
                   </span>
                 </div>
                 <div className="flex items-center space-x-1 mt-1">
-                  <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-yellow-400 text-yellow-400 flex-shrink-0" />
-                  <span className="text-sm sm:text-base font-medium text-gray-700">{campaign.rating?.toFixed(1) || 'New'}</span>
+                  <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-yellow-500 text-yellow-500 flex-shrink-0 mr-2" />
+                  {/* FIX 1: Display ORGANIZER'S USER RATING */}
+                  <span className="text-sm sm:text-base font-medium text-gray-700">
+                    {organizerUserRating.totalRatings === 0 ? 'New' : organizerUserRating.rating.toFixed(1)}
+                  </span>
                   <span className="text-sm sm:text-base text-gray-600 truncate">
-                    ({campaign.totalRatings || 0} ratings)
+                    ({organizerUserRating.totalRatings || 0} ratings)
                   </span>
                 </div>
               </div>
-              <div className="flex space-x-1 sm:space-x-2 flex-shrink-0">
-                <Button variant="outline" size="sm" onClick={handleMessageOrganizer} className="p-2 sm:p-3 bg-white hover:bg-gray-50">
+              <div className="flex space-x-2 sm:space-x-2 flex-shrink-0">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleMessageOrganizer} 
+                  disabled={!organizerPhoneNumber} // *** DISABLED WHEN NO PHONE NUMBER ***
+                  className="p-2 sm:p-3 bg-white hover:bg-gray-50"
+                >
                   <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleCallOrganizer} className="p-2 sm:p-3 bg-white hover:bg-gray-50">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleCallOrganizer} 
+                  disabled={!organizerPhoneNumber} // *** DISABLED WHEN NO PHONE NUMBER ***
+                  className="p-2 sm:p-3 bg-white hover:bg-gray-50"
+                >
                   <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                 </Button>
               </div>
@@ -457,7 +585,7 @@ export function CampaignDetailScreen({
                 variant="outline" 
                 size="sm"
                 onClick={handleDirections}
-                className="shrink-0 text-xs h-9 sm:h-10 bg-amber-500 hover:bg-amber-600 text-white border-amber-500"
+                className="shrink-0 text-xs h-9 sm:h-10 bg-red-500 hover:bg-red-600 text-white border-transparent"
               >
                 <Navigation className="w-4 h-4 mr-1" />
                 Directions

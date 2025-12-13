@@ -8,8 +8,40 @@ import {
   updateDoc, 
   doc,
   onSnapshot,
+  type Unsubscribe
 } from 'firebase/firestore';
-import { db } from './Firebase';
+import { httpsCallable } from 'firebase/functions';
+import { functions, db } from './Firebase';
+
+interface ReportUnsubscribe extends Unsubscribe {}
+
+const subscribeToPendingReportsCount = (
+  callback: (count: number) => void,
+  onError?: (error: Error) => void
+): ReportUnsubscribe => {
+  try {
+    const q = query(
+      collection(db, 'reports'),
+      where('status', '==', 'pending'),
+      orderBy('createdAt', 'desc')
+    );
+    
+    return onSnapshot(q, (querySnapshot) => {
+      // We only care about the size of the snapshot for the count
+      callback(querySnapshot.size);
+    }, 
+    (error) => {
+      console.error('Real-time pending reports count error:', error);
+      onError?.(error);
+    });
+  } catch (error) {
+    console.error('Error setting up pending reports count listener:', error);
+    onError?.(error as Error);
+    return () => {};
+  }
+};
+
+export { subscribeToPendingReportsCount };
 
 export interface Report {
   id?: string;
@@ -39,8 +71,19 @@ export interface Report {
   updatedAt: Date;
 }
 
+// ⬅️ MIGRATED: Function to call the Cloud Function for atomic update
+const adminUpdateReportStatusService = httpsCallable<{ 
+  reportId: string, 
+  status: Report['status'], 
+  adminNotes?: string, 
+  resolvedBy?: string 
+}, { success: boolean; message: string }>(
+  functions, 
+  'adminUpdateReportStatus' // Assuming the Cloud Function is named this
+);
+
 export const reportAdminService = {
-  // Real-time reports subscription
+  // Real-time reports subscription - REMAINS ON CLIENT
   subscribeToReports(callback: (reports: Report[]) => void) {
     const q = query(
       collection(db, 'reports'),
@@ -63,34 +106,31 @@ export const reportAdminService = {
     });
   },
 
-  // Update report status
+  // ⬅️ MIGRATED: Update report status - NOW CALLS CLOUD FUNCTION
   async updateReportStatus(
     reportId: string, 
     status: Report['status'], 
     adminNotes?: string, 
     resolvedBy?: string
   ) {
-    const reportRef = doc(db, 'reports', reportId);
-    const updateData: any = {
-      status,
-      updatedAt: new Date(),
-    };
+    try {
+        const result = await adminUpdateReportStatusService({
+            reportId,
+            status,
+            adminNotes,
+            resolvedBy
+        });
 
-    if (adminNotes) {
-      updateData.adminNotes = adminNotes;
+        if (!result.data.success) {
+            throw new Error(result.data.message || 'Server failed to update report.');
+        }
+    } catch (error) {
+        console.error("Error calling adminUpdateReportStatus Cloud Function:", error);
+        throw error;
     }
-
-    if (status === 'resolved' || status === 'dismissed') {
-      updateData.resolvedAt = new Date();
-      if (resolvedBy) {
-        updateData.resolvedBy = resolvedBy;
-      }
-    }
-
-    await updateDoc(reportRef, updateData);
   },
 
-  // Get reports by status
+  // Get reports by status - REMAINS ON CLIENT
   async getReportsByStatus(status: Report['status']) {
     const q = query(
       collection(db, 'reports'),
@@ -108,7 +148,7 @@ export const reportAdminService = {
     })) as Report[];
   },
 
-  // Get reports by type
+  // Get reports by type - REMAINS ON CLIENT
   async getReportsByType(reportType: Report['reportType']) {
     const q = query(
       collection(db, 'reports'),

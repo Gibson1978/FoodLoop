@@ -1,4 +1,4 @@
-// src/firebase/adminFoodService.ts - UPDATED
+// src/firebase/adminFoodService.ts - UPDATED with Cancellation Function
 import { httpsCallable } from 'firebase/functions';
 import { functions } from './Firebase';
 
@@ -41,5 +41,15 @@ export const adminMarkListingCompleted = async (listingId: string): Promise<Admi
     'adminMarkListingCompleted'
   );
   const result = await markCompleted({ listingId });
+  return result.data;
+};
+
+export const adminCancelFoodListing = async (listingId: string, reason: string): Promise<AdminOperationResult> => {
+  const cancelListing = httpsCallable<{ listingId: string; reason: string }, AdminOperationResult>(
+    functions, 
+    'adminOrUserCancelFoodListing'
+  );
+  // Pass the listingId and reason to the newly created Cloud Function
+  const result = await cancelListing({ listingId, reason }); 
   return result.data;
 };

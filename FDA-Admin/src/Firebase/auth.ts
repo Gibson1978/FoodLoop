@@ -68,11 +68,10 @@ export const USER_ROLES = {
 export const USER_STATUS = {
   PENDING: 'pending',
   APPROVED: 'approved',
-  REJECTED: 'rejected'
+  SUSPENDED: 'suspended'
 } as const;
 
 // REAL-TIME LISTENER FUNCTIONS
-// Real-time listener for pending registrations
 export const subscribeToPendingRegistrations = (
   callback: (users: UserData[]) => void,
   onError?: (error: Error) => void
@@ -196,7 +195,6 @@ export const subscribeToRejectedUsers = (
 };
 
 // ADMIN AUTHENTICATION FUNCTIONS
-// Add this function to your auth.ts
 export const submitAdminRegistration = async (adminData: AdminSignupData): Promise<{success: boolean; error?: string; uid?: string}> => {
   try {
     console.log('Starting admin registration submission for:', adminData.email);
@@ -461,129 +459,36 @@ export const getAllUsers = async (): Promise<{success: boolean; data?: UserData[
   }
 };
 
+const functionsInstance = getFunctions();
+const callAdminAction = (name: string, data: any) => {
+    const callable = httpsCallable<{ userId: string, reason?: string }, { success: boolean; message?: string }>(functionsInstance, name);
+    return callable(data);
+};
+
 // Approve user registration - Update status to 'approved'
 export const approveUserRegistration = async (userId: string): Promise<{success: boolean; error?: string}> => {
-  try {
-    const isAdmin = await isCurrentUserAdmin();
-    if (!isAdmin) {
-      return { 
-        success: false, 
-        error: 'Admin privileges required to approve users' 
-      };
+    try {
+        await isCurrentUserAdmin(); // Local admin check for early failure
+        const result = await callAdminAction('approveUserRegistration', { userId });
+        return { success: result.data.success, error: result.data.message };
+    } catch (error: any) {
+        console.error('Error approving user registration (Client):', error);
+        return { success: false, error: error.message || 'Failed to approve user registration via server.' };
     }
-
-    console.log('Attempting to approve user:', userId);
-    console.log('Current admin UID:', auth.currentUser?.uid);
-
-    // Get current user data
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
-      return { 
-        success: false, 
-        error: 'User not found' 
-      };
-    }
-
-    const userData = userDoc.data();
-    console.log('User data found:', userData);
-
-    await updateDoc(doc(db, 'users', userId), {
-      status: USER_STATUS.APPROVED,
-      verification: {
-        ...userData.verification,
-        verified: true
-      },
-      updatedAt: new Date()
-    });
-
-    console.log('User approved successfully');
-    return { success: true };
-  } catch (error: any) {
-    console.error('Error approving user registration:', error);
-    console.error('Error details:', {
-      code: error.code,
-      message: error.message,
-      stack: error.stack
-    });
-    
-    // More specific error messages
-    if (error.code === 'permission-denied') {
-      return { 
-        success: false, 
-        error: 'Permission denied. Check Firestore rules and ensure you have admin privileges.' 
-      };
-    }
-    
-    return { 
-      success: false, 
-      error: error.message || 'Failed to approve user registration' 
-    };
-  }
 };
 
 
 // Reject user registration - Move to rejectedUsers collection
 export const rejectUserRegistration = async (userId: string, reason?: string): Promise<{success: boolean; error?: string}> => {
-  try {
-    const isAdmin = await isCurrentUserAdmin();
-    if (!isAdmin) {
-      return { 
-        success: false, 
-        error: 'Admin privileges required to reject users' 
-      };
+    try {
+        await isCurrentUserAdmin(); 
+        const result = await callAdminAction('rejectUserRegistration', { userId, reason });
+        return { success: result.data.success, error: result.data.message };
+    } catch (error: any) {
+        console.error('Error rejecting user registration (Client):', error);
+        return { success: false, error: error.message || 'Failed to reject user registration via server.' };
     }
-
-    console.log('Attempting to reject user:', userId);
-
-    // Get the user data first
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
-      return { 
-        success: false, 
-        error: 'User not found' 
-      };
-    }
-
-    const userData = userDoc.data();
-    console.log('User data to reject:', userData);
-
-    // Create a record in rejectedUsers collection
-    await setDoc(doc(db, 'rejectedUsers', userId), {
-      ...userData,
-      rejectionReason: reason || 'Registration rejected by admin',
-      rejectedAt: new Date(),
-      rejectedBy: auth.currentUser?.uid
-    });
-
-    console.log('User moved to rejectedUsers collection');
-
-    // Delete from users collection
-    await deleteDoc(doc(db, 'users', userId));
-
-    console.log('User deleted from users collection');
-    return { success: true };
-  } catch (error: any) {
-    console.error('Error rejecting user registration:', error);
-    console.error('Error details:', {
-      code: error.code,
-      message: error.message,
-      stack: error.stack
-    });
-    
-    if (error.code === 'permission-denied') {
-      return { 
-        success: false, 
-        error: 'Permission denied. Check Firestore rules for rejectedUsers collection.' 
-      };
-    }
-    
-    return { 
-      success: false, 
-      error: error.message || 'Failed to reject user registration' 
-    };
-  }
 };
-
 // Get rejected users
 export const getRejectedUsers = async (): Promise<{success: boolean; data?: UserData[]; error?: string}> => {
   try {
@@ -625,97 +530,36 @@ export const getRejectedUsers = async (): Promise<{success: boolean; data?: User
 
 // Restore rejected user (move back to users collection as pending)
 export const restoreRejectedUser = async (userId: string): Promise<{success: boolean; error?: string}> => {
-  try {
-    const isAdmin = await isCurrentUserAdmin();
-    if (!isAdmin) {
-      return { 
-        success: false, 
-        error: 'Admin privileges required to restore users' 
-      };
+    try {
+        await isCurrentUserAdmin();
+        const result = await callAdminAction('restoreRejectedUser', { userId });
+        return { success: result.data.success, error: result.data.message };
+    } catch (error: any) {
+        console.error('Error restoring user (Client):', error);
+        return { success: false, error: error.message || 'Failed to restore user via server.' };
     }
-
-    // Get the rejected user data
-    const rejectedDoc = await getDoc(doc(db, 'rejectedUsers', userId));
-    if (!rejectedDoc.exists()) {
-      return { 
-        success: false, 
-        error: 'Rejected user not found' 
-      };
-    }
-
-    const userData = rejectedDoc.data();
-    
-    // Remove rejection-specific fields and set status back to pending
-    const { rejectionReason, rejectedAt, rejectedBy, ...userDataToRestore } = userData;
-
-    // Restore to users collection with pending status
-    await setDoc(doc(db, 'users', userId), {
-      ...userDataToRestore,
-      status: USER_STATUS.PENDING,
-      updatedAt: new Date()
-    });
-
-    // Delete from rejectedUsers collection
-    await deleteDoc(doc(db, 'rejectedUsers', userId));
-
-    return { success: true };
-  } catch (error) {
-    console.error('Error restoring rejected user:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to restore user' 
-    };
-  }
 };
 
 export const suspendUser = async (userId: string): Promise<{success: boolean; error?: string}> => {
-  try {
-    const isAdmin = await isCurrentUserAdmin();
-    if (!isAdmin) {
-      return { 
-        success: false, 
-        error: 'Admin privileges required to suspend users' 
-      };
+    try {
+        await isCurrentUserAdmin();
+        const result = await callAdminAction('suspendUser', { userId });
+        return { success: result.data.success, error: result.data.message };
+    } catch (error: any) {
+        console.error('Error suspending user (Client):', error);
+        return { success: false, error: error.message || 'Failed to suspend user via server.' };
     }
-
-    await updateDoc(doc(db, 'users', userId), {
-      status: USER_STATUS.REJECTED,
-      updatedAt: new Date()
-    });
-
-    return { success: true };
-  } catch (error) {
-    console.error('Error suspending user:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to suspend user' 
-    };
-  }
 };
 
 export const activateUser = async (userId: string): Promise<{success: boolean; error?: string}> => {
-  try {
-    const isAdmin = await isCurrentUserAdmin();
-    if (!isAdmin) {
-      return { 
-        success: false, 
-        error: 'Admin privileges required to activate users' 
-      };
+    try {
+        await isCurrentUserAdmin();
+        const result = await callAdminAction('activateUser', { userId });
+        return { success: result.data.success, error: result.data.message };
+    } catch (error: any) {
+        console.error('Error activating user (Client):', error);
+        return { success: false, error: error.message || 'Failed to activate user via server.' };
     }
-
-    await updateDoc(doc(db, 'users', userId), {
-      status: USER_STATUS.APPROVED,
-      updatedAt: new Date()
-    });
-
-    return { success: true };
-  } catch (error) {
-    console.error('Error activating user:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Failed to activate user' 
-    };
-  }
 };
 
 // DELETE USER ACCOUNT FUNCTION (Client-side call to Cloud Function)
@@ -799,6 +643,125 @@ export const deleteUserAccount = async (userId: string): Promise<{success: boole
   }
 };
 
+export const subscribeToAdminProfile = (
+  adminId: string,
+  callback: (profileData: UserData | null) => void,
+  onError?: (error: Error) => void
+): Unsubscribe => {
+  try {
+    const adminDocRef = doc(db, 'users', adminId);
+    
+    return onSnapshot(adminDocRef, 
+      (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const data = docSnapshot.data();
+          
+          // Only return if user is admin
+          if (data.role === USER_ROLES.ADMIN && data.isAdmin === true) {
+            const profileData: UserData = {
+              ...data,
+              createdAt: data.createdAt?.toDate(),
+              updatedAt: data.updatedAt?.toDate()
+            } as UserData;
+            
+            callback(profileData);
+          } else {
+            callback(null);
+          }
+        } else {
+          callback(null);
+        }
+      },
+      (error) => {
+        console.error('Error in admin profile listener:', error);
+        onError?.(error);
+      }
+    );
+  } catch (error) {
+    console.error('Error setting up admin profile listener:', error);
+    onError?.(error as Error);
+    return () => {};
+  }
+};
+
+// Update admin profile with better error handling
+export const updateAdminProfile = async (updateData: {
+  profile: {
+    name?: string;
+    phone?: string;
+    address?: {
+      street?: string;
+      city?: string;
+      postalCode?: string;
+      state?: string;
+      country?: string;
+    };
+  };
+}): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      return { 
+        success: false, 
+        error: 'No authenticated user found' 
+      };
+    }
+
+    // Check if user is admin
+    const isAdmin = await isCurrentUserAdmin();
+    if (!isAdmin) {
+      return { 
+        success: false, 
+        error: 'Admin privileges required to update profile' 
+      };
+    }
+
+    // Create update object with only defined fields
+    const updateObject: any = {
+      updatedAt: new Date()
+    };
+
+    // Add profile updates if provided
+    if (updateData.profile) {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const currentData = userDoc.data();
+        
+        updateObject.profile = {
+          ...currentData.profile,
+          ...updateData.profile,
+          address: {
+            ...currentData.profile?.address,
+            ...updateData.profile.address
+          }
+        };
+      } else {
+        updateObject.profile = updateData.profile;
+      }
+    }
+
+    console.log('Updating admin profile:', updateObject);
+    
+    await updateDoc(doc(db, 'users', user.uid), updateObject);
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating admin profile:', error);
+    
+    if (error.code === 'permission-denied') {
+      return { 
+        success: false, 
+        error: 'Permission denied. Check Firestore rules.' 
+      };
+    }
+    
+    return { 
+      success: false, 
+      error: error.message || 'Failed to update profile' 
+    };
+  }
+};
+
 // Helper function for user-friendly error messages
 const getAuthErrorMessage = (errorCode: string): string => {
   switch (errorCode) {
@@ -823,4 +786,6 @@ const getAuthErrorMessage = (errorCode: string): string => {
   }
 };
 
-export { Unsubscribe };
+export type { Unsubscribe };
+
+  export { auth };

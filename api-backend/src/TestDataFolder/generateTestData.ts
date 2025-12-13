@@ -25,6 +25,7 @@ export const generateTestData = onCall(
     cors: true,
     timeoutSeconds: 540,
     memory: "2GiB",
+    secrets: ["APP_GEMINI_KEY"],
   },
   async (request) => {
     // Handle CORS preflight
@@ -155,38 +156,10 @@ export const generateTestData = onCall(
         }
       }
 
-      // ==========================================
-      // PHASE 4: Generate SMART Relationships
-      // ==========================================
-      if (phase === 'relationships') {
-        logger.info("PHASE 4: Generating SMART relationships");
-        
-        // Use the UPDATED smart relationship generator
-        const relationshipResults = await generateReservationsAndRatings(
-          users, 
-          results.foodListings.length > 0 ? results.foodListings : undefined,
-          results.campaigns.length > 0 ? results.campaigns : undefined
-        );
-        
-        results.reservations = relationshipResults.reservations;
-        results.registrations = relationshipResults.registrations;
-        results.ratings = relationshipResults.ratings;
-        
-        // Generate limited reports
-        const reports = await generateReports(
-          users, 
-          results.foodListings.slice(0, 20),
-          results.campaigns.slice(0, 10)
-        );
-        results.reports = reports;
-        
-        logger.info(`Generated ${results.reservations.length} reservations, ${results.registrations.length} registrations, ${results.ratings.length} ratings, ${results.reports.length} reports`);
-      }
-
       // And update the return message to reflect that relationships weren't generated:
       return {
         success: true,
-        message: `Phase ${phase} completed: ${results.users.length} Users, ${results.foodListings.length} Listings, ${results.campaigns.length} Campaigns`,
+        message: `Phase ${phase} completed: ${results.users.length} Users, ${results.foodListings.length} Listings, ${results.campaigns.length} Campaigns${phase === 'relationships' ? ' (Use generateRelationshipsOnly for relationships)' : ''}`,
         results,
         phase
       };
@@ -298,8 +271,10 @@ export const generateRelationshipsOnly = onCall(
     cors: true,
     timeoutSeconds: 540,
     memory: "2GiB",
+    secrets: ["APP_GEMINI_KEY"],
   },
   async (request) => {
+    // Handle CORS preflight
     if (request.rawRequest.method === 'OPTIONS') {
       return { success: true, message: 'CORS preflight successful' };
     }
@@ -316,9 +291,9 @@ export const generateRelationshipsOnly = onCall(
         throw new HttpsError("permission-denied", "Only administrators can generate relationships");
       }
 
-      logger.info("Starting smart relationship generation...");
+      logger.info("Starting INDEPENDENT relationship & report generation...");
 
-      // Get all test users
+      // 1. Get ALL test users
       const usersSnapshot = await db.collection('users')
         .where('isTestData', '==', true)
         .limit(500)
@@ -329,6 +304,7 @@ export const generateRelationshipsOnly = onCall(
           "No test users found. Please generate users first.");
       }
 
+      // Map snapshot to UserData interface
       const users: UserData[] = usersSnapshot.docs.map(doc => ({
         uid: doc.id,
         email: doc.data().email || '',
@@ -362,13 +338,39 @@ export const generateRelationshipsOnly = onCall(
         familySize: doc.data().familySize || 1
       }));
 
-      // Use the UPDATED smart generator
+      // 2. GENERATE RELATIONSHIPS (Reservations, Registrations, Ratings)
+      // This helper independently fetches foodListings and campaigns internally
       const results = await generateReservationsAndRatings(users);
+
+      // 3. GENERATE REPORTS (Missing piece added here)
+      // We need to fetch a small subset of IDs to attach reports to
+      const listingSnaps = await db.collection('foodListings')
+        .where('isTestData', '==', true)
+        .limit(20)
+        .get();
+      const foodIds = listingSnaps.docs.map(d => d.id);
+
+      const campaignSnaps = await db.collection('campaigns')
+        .where('isTestData', '==', true)
+        .limit(20)
+        .get();
+      const campaignIds = campaignSnaps.docs.map(d => d.id);
+
+      let reports: string[] = [];
+      if (foodIds.length > 0 || campaignIds.length > 0) {
+        logger.info("Generating reports...");
+        reports = await generateReports(users, foodIds, campaignIds);
+      } else {
+        logger.warn("No listings/campaigns found, skipping report generation");
+      }
 
       return {
         success: true,
-        message: `Smart relationships generated: ${results.reservations.length} reservations, ${results.registrations.length} registrations, ${results.ratings.length} ratings`,
-        results
+        message: `Generation Complete: ${results.reservations.length} reservations, ${results.registrations.length} registrations, ${results.ratings.length} ratings, ${reports.length} reports.`,
+        results: {
+          ...results,
+          reports
+        }
       };
       
     } catch (error: any) {

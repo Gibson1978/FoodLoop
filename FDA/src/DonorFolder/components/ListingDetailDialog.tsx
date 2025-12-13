@@ -195,7 +195,7 @@ export function ListingDetailDialog({ listing, open, onOpenChange, onCancel, onU
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="rounded-lg max-w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -224,9 +224,6 @@ export function ListingDetailDialog({ listing, open, onOpenChange, onCancel, onU
               </Button>
             )}
           </div>
-          <DialogDescription className="text-xs sm:text-sm">
-            {isEditing ? 'Edit your food listing details' : 'Complete details for your food listing'}
-          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 sm:space-y-4">
@@ -577,31 +574,9 @@ export function ListingDetailDialog({ listing, open, onOpenChange, onCancel, onU
                 >
                   Close
                 </Button>
-                {listing.status === 'approved' && (
-                  <Button
-                    variant="destructive"
-                    onClick={handleCancel}
-                    className="flex-1 h-9 sm:h-10 text-xs sm:text-sm"
-                  >
-                    <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                    Cancel Listing
-                  </Button>
-                )}
               </>
             )}
           </div>
-
-          {!isEditing && listing.status === 'approved' && (
-            <div className="bg-blue-50 p-2 sm:p-3 rounded-lg">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-xs sm:text-sm text-blue-700">
-                  <p className="font-medium">Listing is active</p>
-                  <p className="text-[10px] sm:text-xs">People can see and request pickup for this food.</p>
-                </div>
-              </div>
-            </div>
-          )}
 
           <Dialog open={showAllRatings} onOpenChange={setShowAllRatings}>
             <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">

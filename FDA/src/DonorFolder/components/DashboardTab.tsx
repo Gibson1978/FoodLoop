@@ -247,7 +247,7 @@ export function DashboardTab({ onNavigateToUpload, onNavigateToListingDetail }: 
                 size="sm"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Create Your First Listing
+                Upload A Food Listing
               </Button>
             </div>
           ) : (

@@ -15,7 +15,8 @@ import {
   adminApproveFoodListing,
   adminRejectFoodListing,
   adminDeleteFoodListing,
-  adminMarkListingCompleted
+  adminMarkListingCompleted,
+  adminCancelFoodListing
 } from './foodAdminService';
 
 export interface FoodListing {
@@ -267,6 +268,27 @@ export const markListingAsCompleted = async (listingId: string): Promise<{succes
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Failed to mark listing as completed' 
+    };
+  }
+};
+
+export const cancelFoodListingAdmin = async (listingId: string, reason: string): Promise<{success: boolean; error?: string}> => {
+  try {
+    const isAdmin = await isCurrentUserAdmin();
+    if (!isAdmin) {
+      return { 
+        success: false, 
+        error: 'Admin privileges required' 
+      };
+    }
+
+    const result = await adminCancelFoodListing(listingId, reason);
+    return { success: result.success, error: result.success ? undefined : result.message };
+  } catch (error) {
+    console.error('Error cancelling food listing:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to cancel listing' 
     };
   }
 };
