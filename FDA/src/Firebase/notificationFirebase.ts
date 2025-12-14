@@ -1,4 +1,4 @@
-// FDA/src/firebase/notificationClient.ts (New Client Service)
+// FDA/src/firebase/notificationClient.ts (REWRITTEN to use Cloud Function for markAllNotificationsAsRead)
 
 import { 
   collection, 
@@ -9,12 +9,15 @@ import {
   onSnapshot,
   updateDoc,
   doc,
-  type Unsubscribe,
-  getDocs
+  type Unsubscribe
 } from 'firebase/firestore';
-import { db, auth } from './firebase'; // Assuming access to auth and db instances
+import { getFunctions, httpsCallable } from 'firebase/functions'; // NEW IMPORT
+import { db, auth } from './firebase'; 
 
-// Client-side Interface for the Notification Document
+// Initialize Firebase Functions instance for callable calls
+const functions = getFunctions();
+
+// --- Client-Side Interfaces (Kept) ---
 export interface AppNotification {
   id: string;
   userId: string;
@@ -29,7 +32,7 @@ export interface AppNotification {
 }
 
 
-// --- 1. REAL-TIME LISTENER FOR USER'S NOTIFICATIONS ---
+// --- 1. REAL-TIME LISTENER FOR USER'S NOTIFICATIONS (RETAINED CLIENT-SIDE) ---
 /**
  * Subscribes to the current user's notifications in real-time.
  */
@@ -78,7 +81,7 @@ export const subscribeToUserNotifications = (
 };
 
 
-// --- 2. MARK NOTIFICATION AS READ ---
+// --- 2. MARK NOTIFICATION AS READ (RETAINED CLIENT-SIDE) ---
 /**
  * Marks a single notification as read.
  */
@@ -98,33 +101,30 @@ export const markNotificationAsRead = async (notificationId: string): Promise<{s
 };
 
 
-// --- 3. MARK ALL NOTIFICATIONS AS READ ---
+// --- 3. MARK ALL NOTIFICATIONS AS READ - MIGRATED TO CF ---
 /**
- * Marks all unread notifications for the current user as read (query-based).
+ * Marks all unread notifications for the current user as read (Cloud Function based).
  */
 export const markAllNotificationsAsRead = async (): Promise<{success: boolean; count: number; error?: string}> => {
   try {
-    const user = auth.currentUser;
-    if (!user) {
+    if (!auth.currentUser) {
       throw new Error('User must be authenticated.');
     }
 
-    const unreadQuery = query(
-        collection(db, 'userNotifications'),
-        where('userId', '==', user.uid),
-        where('read', '==', false)
+    // Define the client call signature matching the CF payload (MarkAllReadRequest: empty payload)
+    const markAllReadCF = httpsCallable<Record<string, never>, { success: boolean; count: number; message?: string }>(
+      functions, 
+      'markAllNotificationsAsReadCF' 
     );
 
-    const querySnapshot = await getDocs(unreadQuery);
-    const updatePromises: Promise<void>[] = [];
-    
-    querySnapshot.forEach((document) => {
-        updatePromises.push(updateDoc(document.ref, { read: true }));
-    });
+    // Call with empty object since the CF derives user ID from context
+    const result = await markAllReadCF({});
 
-    await Promise.all(updatePromises);
-    
-    return { success: true, count: querySnapshot.size };
+    if (result.data.success) {
+      return { success: true, count: result.data.count };
+    } else {
+      return { success: false, count: 0, error: result.data.message || 'Failed to mark all as read via server' };
+    }
   } catch (error) {
     console.error('Error marking all notifications as read:', error);
     return { success: false, count: 0, error: 'Failed to mark all as read.' };

@@ -836,7 +836,10 @@ export function FoodBrowseScreen({ onSelectFood, userRole }: FoodBrowseScreenPro
                               <>
                                 <Button
                                   size="sm"
-                                  onClick={() => !isRated && handleRateAndComplete(userReservation.id!, item)}
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // FIX: Stop propagation for rate button
+                                    !isRated && handleRateAndComplete(userReservation.id!, item)
+                                  }}
                                   // Disable if already rated
                                   disabled={isRated || actionLoading === userReservation.id}
                                   className={`h-8 px-3 text-xs ${
@@ -860,7 +863,10 @@ export function FoodBrowseScreen({ onSelectFood, userRole }: FoodBrowseScreenPro
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleReport(item)}
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // FIX: Stop propagation for report button
+                                    handleReport(item)
+                                  }}
                                   disabled={actionLoading === userReservation.id} 
                                   className="h-8 px-3 text-xs border-red-600 text-white bg-red-600 hover:bg-red-100"
                                 >
@@ -872,7 +878,10 @@ export function FoodBrowseScreen({ onSelectFood, userRole }: FoodBrowseScreenPro
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleCancel(userReservation.id!)}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // FIX: Stop propagation for cancel button
+                                  handleCancel(userReservation.id!)
+                                }}
                                 // Disable if already rated
                                 disabled={userReservation.status !== 'confirmed' || actionLoading === userReservation.id || isRated}
                                 className={`h-8 px-3 text-xs ${

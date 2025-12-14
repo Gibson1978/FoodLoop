@@ -43,6 +43,9 @@ interface UserRating {
   totalRatings: number;
 }
 
+// === NEW CONSTANT: Client-side limit for receivers (Must match server-side) ===
+const RECEIVER_MAX_QUANTITY = 3; 
+
 // *** NEW HELPER FUNCTION: Fetch User Rating ***
 const fetchUserRating = async (userId: string): Promise<UserRating> => {
     const userRef = doc(db, 'users', userId);
@@ -86,6 +89,14 @@ export function FoodDetailScreen({
   const [donorUserRating, setDonorUserRating] = useState<UserRating>({ rating: 0, totalRatings: 0 });
   const [donorPhoneNumber, setDonorPhoneNumber] = useState<string | null>(null);
 
+  // === NEW LOGIC: Calculate effective max quantity ===
+  const isReceiver = userRole === 'receiver';
+  const maxAvailableQuantity = foodItem?.remainingQuantity || 0;
+  // If user is a receiver, max reserve quantity is the smaller of the two limits
+  const maxReservationQuantity = isReceiver 
+    ? Math.min(maxAvailableQuantity, RECEIVER_MAX_QUANTITY)
+    : maxAvailableQuantity;
+    
   // Theme configuration based on user role
   const themeConfig = {
     volunteer: {
@@ -119,6 +130,8 @@ export function FoodDetailScreen({
     volunteer: {
       headerSubtitle: "Reserve for delivery",
       reserveButton: "Reserve This Food",
+      quantityLimitText: (quantity: number, unit: string) => 
+        `Maximum available: ${quantity} ${unit}`,
       successTitle: "Reservation Successful! 🎉",
       successDescription: (quantity: number, unit: string, title: string) => 
         `You have successfully reserved ${quantity} ${unit} of ${title}. Please contact the donor to coordinate pickup and delivery.`
@@ -126,6 +139,10 @@ export function FoodDetailScreen({
     receiver: {
       headerSubtitle: "Reserve your meal",
       reserveButton: "Reserve This Food", 
+      quantityLimitText: (quantity: number, unit: string) =>
+        quantity > RECEIVER_MAX_QUANTITY
+          ? `Maximum reserve quantity: ${RECEIVER_MAX_QUANTITY} ${unit} (Volunteer Limit: ${maxAvailableQuantity} ${unit})` // Show actual volunteer limit for clarity
+          : `Maximum available: ${quantity} ${unit}`, // Use maxReservationQuantity
       successTitle: "Reservation Successful! 🎉",
       successDescription: (quantity: number, unit: string, title: string) =>
         `You have successfully reserved ${quantity} ${unit} of ${title}. Please contact the donor to coordinate pickup.`
@@ -136,7 +153,6 @@ export function FoodDetailScreen({
 
   // Fetch food item data from Firebase
   useEffect(() => {
-    // ... (Existing code for fetching food item data)
     const unsubscribe = getApprovedFoodListings(
       (listings) => {
         const foundItem = listings.find(item => item.id === foodId);
@@ -166,10 +182,8 @@ export function FoodDetailScreen({
   // *** Existing useEffect to fetch donor phone number (FIXED) ***
   useEffect(() => {
     if (foodItem?.donorId) {
-      // --------------------------------------------------------------------------
       // FIX: Call the new secure function with all 3 required parameters
-      // --------------------------------------------------------------------------
-      fetchSecureContactDetails( // FIX 2: Use correct function name
+      fetchSecureContactDetails(
         foodItem.donorId, // targetUserId
         foodId,           // interactionId
         'food'            // interactionType
@@ -179,7 +193,6 @@ export function FoodDetailScreen({
           console.error("Error fetching donor phone number:", error);
           setDonorPhoneNumber(null);
         });
-      // --------------------------------------------------------------------------
     } else {
       setDonorPhoneNumber(null);
     }
@@ -228,11 +241,22 @@ export function FoodDetailScreen({
   };
 
   const handleReserve = () => {
+    // Reset quantity to 1 or max available/allowed if current quantity is invalid
+    if (reservationQuantity > maxReservationQuantity) {
+        setReservationQuantity(maxReservationQuantity > 0 ? maxReservationQuantity : 1);
+    }
     setShowReservationDialog(true);
   };
 
   const confirmReservation = async () => {
     if (!foodItem) return;
+
+    // Final client-side check before sending to server
+    if (isReceiver && reservationQuantity > RECEIVER_MAX_QUANTITY) {
+        setReservationError(`As a receiver, you are limited to reserving a maximum of ${RECEIVER_MAX_QUANTITY} ${foodItem.quantityUnit}.`);
+        setShowReservationDialog(false);
+        return;
+    }
     
     const result = await reserveFood(foodId, reservationQuantity, userRole);
     
@@ -244,6 +268,8 @@ export function FoodDetailScreen({
         (listings) => {
           const foundItem = listings.find(item => item.id === foodId);
           setFoodItem(foundItem || null);
+          // Reset reservation quantity to 1 after successful reserve
+          setReservationQuantity(1); 
         },
         (error) => {
           console.error('Error refreshing food item:', error);
@@ -649,8 +675,9 @@ export function FoodDetailScreen({
           <Button
             onClick={handleReserve}
             className={`w-full h-12 sm:h-14 ${theme.button} text-white rounded-xl text-base sm:text-lg font-semibold shadow-lg`}
+            disabled={maxReservationQuantity === 0} // Disable if no quantity is left
           >
-            {text.reserveButton}
+            {maxReservationQuantity === 0 ? 'Out of Stock' : text.reserveButton}
           </Button>
         </div>
       </div>
@@ -683,11 +710,11 @@ export function FoodDetailScreen({
                       <Input
                         type="number"
                         min="1"
-                        max={foodItem.remainingQuantity}
+                        max={maxReservationQuantity} // Use the calculated max
                         value={reservationQuantity}
                         onChange={(e) => {
                           const value = parseInt(e.target.value);
-                          if (!isNaN(value) && value >= 1 && value <= foodItem.remainingQuantity) {
+                          if (!isNaN(value) && value >= 1 && value <= maxReservationQuantity) { // Use maxReservationQuantity for validation
                             setReservationQuantity(value);
                           } else if (e.target.value === '') {
                             setReservationQuantity(1);
@@ -696,6 +723,9 @@ export function FoodDetailScreen({
                         onBlur={(e) => {
                           if (e.target.value === '' || parseInt(e.target.value) < 1) {
                             setReservationQuantity(1);
+                          } else if (parseInt(e.target.value) > maxReservationQuantity) {
+                             // Revert to max allowed if user manually types too high
+                            setReservationQuantity(maxReservationQuantity);
                           }
                         }}
                         className="text-center text-xl font-bold h-12 border-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -707,16 +737,20 @@ export function FoodDetailScreen({
                   <Button
                     variant="outline"
                     size="lg"
-                    onClick={() => setReservationQuantity(Math.min(foodItem.remainingQuantity, reservationQuantity + 1))}
-                    disabled={reservationQuantity >= foodItem.remainingQuantity}
+                    onClick={() => setReservationQuantity(Math.min(maxReservationQuantity, reservationQuantity + 1))} // Use maxReservationQuantity here
+                    disabled={reservationQuantity >= maxReservationQuantity}
                     className="h-12 w-12 text-lg flex-shrink-0"
                   >
                     +
                   </Button>
                 </div>
                 
+                {/* Limit Text (Dynamically display receiver limit if applicable) */}
                 <p className="text-xs text-gray-500 mt-3 text-center">
-                  Maximum available: {foodItem.remainingQuantity} {foodItem.quantityUnit}
+                  {text.quantityLimitText(maxReservationQuantity, foodItem.quantityUnit)}
+                  {isReceiver && maxReservationQuantity < maxAvailableQuantity && (
+                      <span className="block text-red-500 font-medium"> (You are limited to {RECEIVER_MAX_QUANTITY} {foodItem.quantityUnit})</span>
+                  )}
                 </p>
               </div>
             </CardContent>
@@ -731,6 +765,7 @@ export function FoodDetailScreen({
               <Button
                 onClick={confirmReservation}
                 className={`flex-1 h-12 ${theme.button} text-white font-semibold`}
+                disabled={reservationQuantity === 0 || reservationQuantity > maxReservationQuantity}
               >
                 Confirm Reserve
               </Button>

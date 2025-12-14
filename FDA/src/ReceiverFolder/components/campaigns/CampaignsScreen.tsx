@@ -637,7 +637,10 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
                               <>
                                 <Button
                                   size="sm"
-                                  onClick={() => !isRated && handleRateAndComplete(userRegistration.id!, campaign)}
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // FIX: Stop propagation for rate button
+                                    !isRated && handleRateAndComplete(userRegistration.id!, campaign)
+                                  }}
                                   // Disable if already rated
                                   disabled={isRated || actionLoading === userRegistration.id}
                                   className={`h-8 px-3 text-xs ${
@@ -661,7 +664,10 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleReport(campaign)}
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // FIX: Stop propagation for report button
+                                    handleReport(campaign)
+                                  }}
                                   disabled={actionLoading === userRegistration.id} 
                                   className="h-8 px-3 text-xs border-red-200 text-white bg-red-600 hover:bg-red-50"
                                 >
@@ -674,7 +680,10 @@ export function CampaignsScreen({ userRole, onSelectCampaign }: CampaignsScreenP
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleCancel(userRegistration.id!)}
+                                onClick={(e) => {
+                                  e.stopPropagation(); // FIX: Stop propagation for cancel button
+                                  handleCancel(userRegistration.id!)
+                                }}
                                 // Disable if already rated
                                 disabled={userRegistration.status !== 'registered' || actionLoading === userRegistration.id || isRated}
                                 className={`h-8 px-3 text-xs ${

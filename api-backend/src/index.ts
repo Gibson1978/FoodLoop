@@ -86,10 +86,10 @@ export {
   onUserActivated, 
   onUserSuspended } from './NotificationFolder/userNotification'
 
-  export {getContactDetails} from './getContact'
+export {getContactDetails} from './getContact'
 
-  export {reserveFoodCF, completeFoodReservationCF ,cancelFoodReservationCF} from './clientFolder/user-Food'
+export {reserveFoodCF, completeFoodReservationCF ,cancelFoodReservationCF} from './clientFolder/user-Food'
 
-  export {registerForCampaignCF, completeCampaignRegistrationCF, cancelCampaignRegistrationCF} from './clientFolder/user-Campaign'
+export {registerForCampaignCF, completeCampaignRegistrationCF, cancelCampaignRegistrationCF} from './clientFolder/user-Campaign'
 
-  export {markAllNotificationsAsReadCF,submitRatingCF} from './clientFolder/user-Utils'
+export {markAllNotificationsAsReadCF,submitRatingCF} from './clientFolder/user-Utils'

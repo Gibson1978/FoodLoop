@@ -2671,14 +2671,14 @@ async function executeToolsForQuery(userMessage: string): Promise<{
     // The final conversational fallback logic is in the main export function (adminAiChat).
     
     return {
-      response: "🤖 Enhanced AI Assistant Ready\n\nI can now analyze your platform data in these areas:\n\n" +
-               "* Core Metrics (Overview, Impact)\n" +
-               "* Growth & Trends (Daily/Monthly Analysis)\n" +
-               "* User Behavior (Ratings, Reports, Segmentation)\n" +
-               "* Geographic Analysis (High Need, High Waste Areas)\n" +
-               "* Logistics (Efficiency, Coverage, Food Preferences)\n" +
-               "* Admin Queue (Pending Items, High-Risk Users)\n" +
-               "* Performance Comparison (Food Rescue vs. Campaigns)\n\n" +
+      response: "🤖 NourrishNow AI Assistant Ready\n\nI can now analyze your platform data in these areas:\n\n" +
+               " Core Metrics (Overview, Impact)\n" +
+               " Growth & Trends (Daily/Monthly Analysis)\n" +
+               " User Behavior (Ratings, Reports, Segmentation)\n" +
+               " Geographic Analysis (High Need, High Waste Areas)\n" +
+               " Logistics (Efficiency, Coverage, Food Preferences)\n" +
+               " Admin Queue (Pending Items, High-Risk Users)\n" +
+               " Performance Comparison (Food Rescue vs. Campaigns)\n\n" +
                "Try asking: 'Show me platform overview' or 'Show geographic insights'",
       suggestions: [
         'Show geographic insights',
@@ -3176,7 +3176,7 @@ export const adminAiChat = onCall(
         .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.parts}`)
         .join('\n\n');
 
-      const prompt = `You are FoodAI, an intelligent, analytical, and friendly assistant for a food redistribution platform. 
+      const prompt = `You are NourishNow AI, an intelligent, analytical, and friendly assistant for a food redistribution platform. 
       Your primary goal is to provide insight and analysis, not just raw numbers. 
       Be concise, use emojis when appropriate, and always infer context (e.g., if asked for a top item, analyze the data and present the top item without prompting the user for more detail).
       STRICT RULE: DO NOT USE BOLD TEXT, HASHMARKS (#), OR DOUBLE ASTERISKS (**). Use single asterisks (*) ONLY for bullet points. Do not use asterisks or underscores for emphasis/italic.

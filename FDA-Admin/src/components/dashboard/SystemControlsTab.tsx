@@ -74,7 +74,7 @@ import {
 // Constants and configuration objects
 const USER_ROLE_CONFIG = {
   donor: { className: "bg-blue-100 text-blue-700", label: "Donor" },
-  volunteer: { className: "bg-purple-100 text-purple-700", label: "Volunteer" },
+  volunteer: { className: "bg-green-100 text-green-700", label: "Volunteer" },
   receiver: { className: "bg-orange-100 text-orange-700", label: "Receiver" },
   admin: { className: "bg-red-100 text-red-700", label: "Admin" }
 };
@@ -82,11 +82,11 @@ const USER_ROLE_CONFIG = {
 const USER_STATUS_CONFIG = {
   [USER_STATUS.APPROVED]: { variant: "secondary", className: "bg-green-100 text-green-700", label: "Active" },
   [USER_STATUS.SUSPENDED]: { variant: "secondary", className: "bg-orange-100 text-orange-700", label: "Suspended" },
-  [USER_STATUS.PENDING]: { variant: "secondary", className: "bg-yellow-100 text-yellow-700", label: "Pending" }
+  [USER_STATUS.PENDING]: { variant: "secondary", className: "bg-amber-100 text-amber-600", label: "Pending" }
 };
 
 const FOOD_STATUS_CONFIG = {
-  [FOOD_STATUS.PENDING]: { variant: "secondary", className: "bg-yellow-100 text-yellow-700", label: "Pending" },
+  [FOOD_STATUS.PENDING]: { variant: "secondary", className: "bg-amber-100 text-amber-600", label: "Pending" },
   [FOOD_STATUS.APPROVED]: { variant: "secondary", className: "bg-green-100 text-green-700", label: "Approved" },
   [FOOD_STATUS.REJECTED]: { variant: "secondary", className: "bg-red-100 text-red-700", label: "Rejected" },
   [FOOD_STATUS.COMPLETED]: { variant: "secondary", className: "bg-gray-100 text-gray-700", label: "Completed" },
@@ -101,7 +101,7 @@ const FOOD_CATEGORY_CONFIG = {
 
 // ADD APPROVED TO CAMPAIGN STATUS
 const CAMPAIGN_STATUS_CONFIG = {
-  [CAMPAIGN_STATUS.PENDING]: { variant: "secondary", className: "bg-yellow-100 text-yellow-700", label: "Pending" },
+  [CAMPAIGN_STATUS.PENDING]: { variant: "secondary", className: "bg-amber-100 text-amber-600", label: "Pending" },
   [CAMPAIGN_STATUS.APPROVED]: { variant: "secondary", className: "bg-blue-100 text-blue-700", label: "Approved" }, 
   [CAMPAIGN_STATUS.COMPLETED]: { variant: "secondary", className: "bg-gray-100 text-gray-700", label: "Completed" },
   [CAMPAIGN_STATUS.CANCELLED]: { variant: "secondary", className: "bg-red-100 text-red-700", label: "Cancelled" }

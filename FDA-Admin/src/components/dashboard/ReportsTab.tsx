@@ -73,7 +73,7 @@ const ReportDetailCard = ({
   const getPriorityBadge = (priority: string) => {
     const priorityConfig = {
       low: "bg-green-100 text-green-700 border-green-200",
-      medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
+      medium: "bg-amber-100 text-amber-600 border-amber-200",
       high: "bg-red-100 text-red-700 border-red-200"
     };
     
@@ -565,7 +565,7 @@ export function ReportsTab() {
                           </div>
                           <div className="flex items-center gap-2">
                             {/* Re-implement getPriorityBadge logic directly inside map or move helper out */}
-                            <Badge variant="outline" className={`text-xs ${report.priority === 'low' ? "bg-green-100 text-green-700 border-green-200" : report.priority === 'medium' ? "bg-yellow-100 text-yellow-700 border-yellow-200" : "bg-red-100 text-red-700 border-red-200"}`}>
+                            <Badge variant="outline" className={`text-xs ${report.priority === 'low' ? "bg-green-100 text-green-700 border-green-200" : report.priority === 'medium' ? "bg-amber-100 text-amber-600 border-amber-200" : "bg-red-100 text-red-700 border-red-200"}`}>
                               {report.priority.charAt(0).toUpperCase() + report.priority.slice(1)} Priority
                             </Badge>
                             {getStatusBadge(report.status)}

@@ -1,6 +1,6 @@
 // functions/reservations.ts (CORRECTED V2 SYNTAX)
 
-import * as functions from 'firebase-functions';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 
 // Initialize App (assuming this is done in the main index.ts)
@@ -18,9 +18,8 @@ interface SubmitRatingRequest {
   reservationId?: string;
 }
 
-interface MarkAllReadRequest {
-  // Data is empty, userId is derived from auth context
-}
+// Fix: Changed type MarkAllReadRequest = {} to Record<string, never> to resolve the linter error (@typescript-eslint/ban-types).
+type MarkAllReadRequest = Record<string, never>; 
 
 // ------------------------------------------------------------------
 // Core Rating Function
@@ -29,17 +28,17 @@ interface MarkAllReadRequest {
 /**
  * Submits a rating for a food listing or campaign.
  */
-export const submitRatingCF = functions.https.onCall(
-  async (request: functions.https.CallableRequest<SubmitRatingRequest>) => {
+export const submitRatingCF = onCall(
+  async (request) => {
     const user = request.auth;
     if (!user) {
-      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+      throw new HttpsError('unauthenticated', 'User must be authenticated.');
     }
 
-    const { targetType, targetId, rating, comment, reservationId } = request.data;
+    const { targetType, targetId, rating, comment, reservationId } = request.data as SubmitRatingRequest;
     
     if (rating < 1 || rating > 5) {
-        throw new functions.https.HttpsError('invalid-argument', 'Rating must be between 1 and 5.');
+        throw new HttpsError('invalid-argument', 'Rating must be between 1 and 5.');
     }
 
     const targetCollection = targetType === 'food' ? 'foodListings' : 'campaigns';
@@ -52,16 +51,26 @@ export const submitRatingCF = functions.https.onCall(
       // 1. Get Target Data
       const targetDoc = await transaction.get(targetRef);
       if (!targetDoc.exists) {
-        throw new functions.https.HttpsError('not-found', `${targetType} not found.`);
+        throw new HttpsError('not-found', `${targetType} not found.`);
       }
-      const targetData = targetDoc.data()!;
+      
+      const targetData = targetDoc.data();
+      if (!targetData) {
+          throw new HttpsError('internal', `${targetType} data is empty.`);
+      }
       
       // 2. Get Rater Data
       const userDoc = await db.collection('users').doc(user.uid).get();
       if (!userDoc.exists) {
-        throw new functions.https.HttpsError('not-found', 'User data not found.');
+        throw new HttpsError('not-found', 'User data not found.');
       }
-      const userData = userDoc.data()!;
+      
+      const userData = userDoc.data();
+      if (!userData) {
+          throw new HttpsError('internal', 'User data is empty.');
+      }
+      
+      // Replaced non-null assertions with safe optional chaining and default values
       const raterUserType = userData.role === 'volunteer' ? 'volunteer' : 'receiver';
       const raterUserName = userData.profile?.name || userData.profile?.contactPerson || 'Anonymous User';
 
@@ -75,7 +84,8 @@ export const submitRatingCF = functions.https.onCall(
       const existingRatingsSnapshot = await transaction.get(existingRatingQuery);
       
       let oldRating = 0; // Used for stats update
-      let newRating = rating;
+      // Fixed prefer-const error
+      const newRating = rating;
 
       if (!existingRatingsSnapshot.empty) {
         // A. Update existing rating
@@ -149,11 +159,11 @@ export const submitRatingCF = functions.https.onCall(
 /**
  * Marks all unread notifications for the current user as read using a Batched Write.
  */
-export const markAllNotificationsAsReadCF = functions.https.onCall(
-  async (request: functions.https.CallableRequest<MarkAllReadRequest>) => {
+export const markAllNotificationsAsReadCF = onCall(
+  async (request) => {
     const userId = request.auth?.uid;
     if (!userId) {
-      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+      throw new HttpsError('unauthenticated', 'User must be authenticated.');
     }
 
     const unreadQuery = db.collection('userNotifications')

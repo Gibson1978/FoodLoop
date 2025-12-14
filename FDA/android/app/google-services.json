@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "650017508269",
+    "firebase_url": "https://food-redistribution-app-c088e-default-rtdb.firebaseio.com",
+    "project_id": "food-redistribution-app-c088e",
+    "storage_bucket": "food-redistribution-app-c088e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:650017508269:android:b054172737d8dd601e6f24",
+        "android_client_info": {
+          "package_name": "com.myorg.foodapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDczspyokoAbD3q8AClIQHicLWUac1o5fA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -158,10 +158,6 @@ export function CreateCampaignTab({ onNavigateToCampaigns }: CreateCampaignTabPr
       setError('Campaign title is required');
       return;
     }
-    if (!formData.description.trim()) {
-      setError('Campaign description is required');
-      return;
-    }
     if (!selectedCategory) {
       setError('Please select a food category');
       return;

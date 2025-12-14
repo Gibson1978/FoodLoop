@@ -1,43 +1,35 @@
-// FDA/src/firebase/ratingService.ts
+// FDA/src/firebase/ratingService.ts (REWRITTEN to use Cloud Function for submitRating)
 import { 
   collection, 
-  doc, 
-  addDoc, 
   query, 
   where, 
   orderBy, 
   getDocs,
   limit,
   startAfter,
-  updateDoc,
-  getDoc,
   type DocumentSnapshot
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions'; // NEW IMPORT
 import { db, auth } from './firebase';
 
+// Initialize Firebase Functions instance for callable calls
+const functions = getFunctions();
+
+// --- Client-Side Interfaces (Kept) ---
 export interface Rating {
   id?: string;
-  // What is being rated
   targetType: 'food' | 'campaign';
   targetId: string;
   targetName: string;
-  
-  // Who is being rated (donor/volunteer)
   ratedUserId: string;
   ratedUserName: string;
   ratedUserType: 'donor' | 'volunteer';
-  
-  // Who is rating
   raterUserId: string;
   raterUserName: string;
   raterUserType: 'receiver' | 'volunteer';
-  
-  // Rating data
   rating: number; // 1-5
   comment?: string;
   reservationId?: string;
-
-  // Metadata
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,7 +40,7 @@ export interface RatingStats {
   ratingCounts: { [key: number]: number }; // Count of 1-star, 2-star, etc.
 }
 
-// Submit a rating
+// Submit a rating - MIGRATED TO CF
 export const submitRating = async (
   targetType: 'food' | 'campaign',
   targetId: string,
@@ -59,76 +51,39 @@ export const submitRating = async (
   }
 ): Promise<{success: boolean; error?: string; ratingId?: string}> => {
   try {
-    const user = auth.currentUser;
-    if (!user) {
+    if (!auth.currentUser) {
       return { success: false, error: 'User must be authenticated' };
     }
 
-    // 1. Get target details (food/campaign)
-    const targetCollection = targetType === 'food' ? 'foodListings' : 'campaigns';
-    const targetDoc = await getDoc(doc(db, targetCollection, targetId));
-    if (!targetDoc.exists()) {
-      return { success: false, error: `${targetType} not found` };
-    }
-
-    const targetData = targetDoc.data();
-    
-    // 2. Get user data for rater
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    if (!userDoc.exists()) {
-      return { success: false, error: 'User data not found' };
-    }
-
-    const userData = userDoc.data();
-    const raterUserType = userData.role === 'volunteer' ? 'volunteer' : 'receiver';
-
-    // 3. Check if user already rated this item
-    const existingRatingQuery = query(
-      collection(db, 'ratings'),
-      where('targetType', '==', targetType),
-      where('targetId', '==', targetId),
-      where('raterUserId', '==', user.uid)
+    // Define the client call signature matching the CF payload (SubmitRatingRequest)
+    const submitRatingCF = httpsCallable<{ 
+      targetType: 'food' | 'campaign', 
+      targetId: string, 
+      rating: number, 
+      comment?: string, 
+      reservationId?: string 
+    }, { success: boolean; ratingId?: string; message?: string }>(
+      functions, 
+      'submitRatingCF' 
     );
-
-    const existingRatings = await getDocs(existingRatingQuery);
     
-    let ratingId: string;
+    const result = await submitRatingCF({
+      targetType,
+      targetId,
+      ...ratingData
+    });
 
-    if (!existingRatings.empty) {
-      // Update existing rating
-      const existingRating = existingRatings.docs[0];
-      ratingId = existingRating.id;
-      await updateDoc(doc(db, 'ratings', ratingId), {
-        rating: ratingData.rating,
-        comment: ratingData.comment,
-        updatedAt: new Date()
-      });
-    } else {
-      // Create new rating
-      const rating: Omit<Rating, 'id'> = {
-        targetType,
-        targetId,
-        targetName: targetData.title,
-        ratedUserId: targetType === 'food' ? targetData.donorId : targetData.organizerId,
-        ratedUserName: targetType === 'food' ? targetData.donorName : targetData.organizerName,
-        ratedUserType: targetType === 'food' ? 'donor' : 'volunteer',
-        raterUserId: user.uid,
-        raterUserName: userData.profile?.name || userData.profile?.contactPerson || 'Anonymous User',
-        raterUserType,
-        rating: ratingData.rating,
-        comment: ratingData.comment,
-        reservationId: ratingData.reservationId, // Include reservationId
-        createdAt: new Date(),
-        updatedAt: new Date(),
+    if (result.data.success) {
+      return { 
+        success: true, 
+        ratingId: result.data.ratingId 
       };
-
-      const ratingRef = await addDoc(collection(db, 'ratings'), rating);
-      ratingId = ratingRef.id;
+    } else {
+      return { success: false, error: result.data.message || 'Failed to submit rating via server' };
     }
-
-    return { success: true, ratingId };
   } catch (error: any) {
     console.error('Error submitting rating:', error);
+    // Handle Callable Function errors (e.g., invalid-argument)
     return { 
       success: false, 
       error: error.message || 'Failed to submit rating' 
@@ -136,7 +91,7 @@ export const submitRating = async (
   }
 };
 
-// Get ratings for a specific target with pagination
+// Get ratings for a specific target with pagination (RETAINED CLIENT-SIDE)
 export const getRatingsForTarget = async (
   targetType: 'food' | 'campaign',
   targetId: string,
@@ -185,7 +140,7 @@ export const getRatingsForTarget = async (
   }
 };
 
-// Get rating statistics for a target
+// Get rating statistics for a target (RETAINED CLIENT-SIDE)
 export const getRatingStats = async (
   targetType: 'food' | 'campaign',
   targetId: string
@@ -246,7 +201,7 @@ export const getRatingStats = async (
   }
 };
 
-// Check if user has rated an item
+// Check if user has rated an item (RETAINED CLIENT-SIDE)
 export const getUserRatingForItem = async (
   targetType: 'food' | 'campaign',
   targetId: string

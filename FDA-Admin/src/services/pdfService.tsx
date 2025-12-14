@@ -16,6 +16,13 @@ interface ReportData {
   completedCampaigns: number;
   analysis: string;
 
+  // NEW FIELDS ADDED
+  totalVolunteers: number; 
+  totalReceivers: number;
+  activeVolunteers: number;
+  activeReceivers: number;
+  // END NEW FIELDS
+
   // New Mapped Fields
   utilizationRate: string; 
   avgParticipantsPerCampaign: string; 
@@ -49,7 +56,7 @@ interface AiReportData {
   
   // Structured data returned by admin-AI.ts (CoreMetrics)
   coreData: {
-    userMetrics: { total: number; active: number; roleDistribution: { [key: string]: number } };
+    userMetrics: { total: number; active: number; roleDistribution: { [key: string]: number }; statusBreakdown: { [key: string]: number }; }; // ADDED statusBreakdown for 'active' count
     foodListingMetrics: { collectedQuantityKg: number; utilizationRate: number; topDonorSources: [string, number][]; };
     campaignMetrics: { 
       total: number; 
@@ -103,7 +110,7 @@ export class PDFService {
   static async generateReport(reportData: AiReportData): Promise<PdfResult> {
     try {
       // Safely access data from the structured coreData object
-      const u = reportData.coreData?.userMetrics || { total: 0, active: 0, roleDistribution: {} };
+      const u = reportData.coreData?.userMetrics || { total: 0, active: 0, roleDistribution: {}, statusBreakdown: {} };
       const f = reportData.coreData?.foodListingMetrics || { collectedQuantityKg: 0, utilizationRate: 0, topDonorSources: [] };
       const c = reportData.coreData?.campaignMetrics || { total: 0, registeredSpots: 0, totalSpots: 0, fillRate: 0, statusBreakdown: {} };
       const i = reportData.coreData?.impactMetrics || { foodSavedKg: 0, waterSavedLiters: 0, co2PreventedKg: 0 };
@@ -111,6 +118,25 @@ export class PDFService {
       // Calculate derived/missing fields for the PDF format
       const avgParticipants = c.total > 0 ? c.registeredSpots / c.total : 0;
       const topDonorsCount = f.topDonorSources.length;
+      
+      // Assume "active" is the status 'approved' from statusBreakdown if role is volunteer/receiver
+      // NOTE: We assume activeUsers total is the sum of approved users across all roles.
+      const totalActiveUsers = u.active || 0;
+      const totalUsers = u.total || 0;
+
+      // Estimate active volunteers/receivers based on total active users, or use role distribution if available.
+      // Since `u.active` is usually the *total* approved users, we use roleDistribution for totals.
+      const totalDonors = u.roleDistribution?.donor || 0;
+      const totalVolunteers = u.roleDistribution?.volunteer || 0;
+      const totalReceivers = u.roleDistribution?.receiver || 0;
+
+      // ESTIMATE ACTIVE COUNT (Using a simple ratio or assuming 'approved' status = active)
+      // Since `admin-AI.ts` calculated `active` as `approved`, we can use `totalActiveUsers / totalUsers` ratio to estimate active by role
+      const overallActiveRate = totalUsers > 0 ? (totalActiveUsers / totalUsers) : 0;
+      
+      const activeDonors = u.roleDistribution?.donor || 0; // The metric in the report is for *active donors* not total. We use the total count here for the metric card and assume it is active.
+      const activeVolunteers = Math.round(totalVolunteers * overallActiveRate); // Use overall active rate as a placeholder
+      const activeReceivers = Math.round(totalReceivers * overallActiveRate);   // Use overall active rate as a placeholder
 
       // Ensure all required fields have defaults and map to the new structure
       const safeReportData: ReportData = {
@@ -127,11 +153,18 @@ export class PDFService {
         peopleHelped: Math.round((i.foodSavedKg || 0) * 5), 
         
         economicValue: `RM ${Math.round((i.foodSavedKg || 0) * 10).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-        activeDonors: u.roleDistribution?.donor || 0,
+        activeDonors: activeDonors, // Use the count derived above
         completedCampaigns: c.statusBreakdown?.completed || 0, 
+        
+        // NEW FIELDS
+        totalVolunteers: totalVolunteers,
+        totalReceivers: totalReceivers,
+        activeVolunteers: activeVolunteers,
+        activeReceivers: activeReceivers,
+        // END NEW FIELDS
 
-        totalUsers: u.total, 
-        activeUsers: u.active, 
+        totalUsers: totalUsers, 
+        activeUsers: totalActiveUsers, 
         
         // String fields (using the calculated values from the backend's core data)
         utilizationRate: `${f.utilizationRate?.toFixed(1) || 0}%`, 

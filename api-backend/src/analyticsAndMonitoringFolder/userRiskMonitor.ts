@@ -221,8 +221,9 @@ async function executeRiskMonitoring(triggeringUserId?: string): Promise<{ proce
         'riskMetrics.removalReviewRequired': removalReviewRequired,
         'riskMetrics.totalReports': userReports.length, // Ensure totalReports is always updated
         'riskMetrics.reportBreakdown': reportBreakdown, // NEW: Save the severity breakdown
-        // Ensure status defaults to approved if action is 'none' and status isn't pending/rejected
-        status: (action === 'none' && user.status !== 'pending') ? 'approved' : user.status
+        
+        // FIX: Start with current status and only change it if the calculated action demands it.
+        status: user.status 
       };
       
       const isSignificantAction = (action !== 'none' && user.status !== action) || 
@@ -253,12 +254,12 @@ async function executeRiskMonitoring(triggeringUserId?: string): Promise<{ proce
 
         updateData['riskMetrics.historyRef'] = logRef.id;
 
-        // 2. Perform Action & Send Notification (UNCHANGED)
+        // 2. Perform Action & Send Notification (MODIFIED STATUS UPDATE HERE)
         let notificationTitle: string = '';
         let notificationMessage: string = '';
         
         if (action === 'suspend') {
-            updateData.status = 'suspended'; 
+            updateData.status = 'suspended'; // Explicitly set to calculated status
             updateData['riskMetrics.suspensionReason'] = reason;
             updateData['riskMetrics.suspensionDate'] = admin.firestore.FieldValue.serverTimestamp();
             actionsTaken++;
@@ -267,9 +268,8 @@ async function executeRiskMonitoring(triggeringUserId?: string): Promise<{ proce
             notificationMessage = `Your account was automatically suspended due to high risk factors. Score: ${score}.`;
             
         } else if (action === 'warn') {
-            if (updateData.status === 'warn') {
-                updateData.status = 'approved'; 
-            }
+            // Set to warn if calculated.
+            updateData.status = 'warn'; 
             
             notificationTitle = "Risk Warning Issued ⚠️";
             notificationMessage = `Your recent activity triggered a risk warning (Score: ${score}). Please review guidelines.`;
@@ -286,6 +286,12 @@ async function executeRiskMonitoring(triggeringUserId?: string): Promise<{ proce
                 fullDetails: `Trigger: ${reason}`
             });
         }
+      } 
+      
+      // FIX: If action is 'none' but current status is 'warn', revert to 'approved'.
+      // This is the only automatic status demotion. This preserves manual 'suspended' status.
+      if (action === 'none' && user.status === 'warn') {
+          updateData.status = 'approved';
       }
       
       // 3. FINAL UNCONDITIONAL WRITE 

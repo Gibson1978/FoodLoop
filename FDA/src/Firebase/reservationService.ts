@@ -1,18 +1,20 @@
-// FDA/src/firebase/reservationService.ts
+// FDA/src/firebase/reservationService.ts (REWRITTEN to use Cloud Functions)
+
 import { 
   collection, 
-  addDoc, 
   doc, 
   query, 
   where, 
-  getDocs,
-  getDoc, 
-  updateDoc,
-  serverTimestamp 
+  getDocs
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions'; // NEW IMPORT
 import { db, auth } from './firebase';
 import type { UserData } from './auth'; 
 
+// Initialize Firebase Functions instance for callable calls
+const functions = getFunctions();
+
+// --- Client-Side Interfaces (Kept) ---
 export interface FoodReservation {
   id?: string;
   foodListingId: string;
@@ -22,7 +24,6 @@ export interface FoodReservation {
   status: 'confirmed' | 'completed' | 'cancelled';
   reservedAt: Date;
   updatedAt: Date;
-  // Add user data directly in the reservation
   userName: string;
   userEmail: string;
   userPhone?: string;
@@ -35,121 +36,48 @@ export interface CampaignRegistration {
   status: 'registered' | 'attended' | 'cancelled';
   registeredAt: Date;
   updatedAt: Date;
-  // Add user data directly in the registration
   userName: string;
   userEmail: string;
   userPhone?: string;
 }
 
-// Reserve food (for both receivers and volunteers)
+// --- CLOUD FUNCTION CALLS (Migrated) ---
+
+// Reserve food (for both receivers and volunteers) - MIGRATED TO CF
 export const reserveFood = async (
   foodListingId: string, 
   quantity: number,
   userType: 'receiver' | 'volunteer'
 ): Promise<{success: boolean; error?: string; reservationId?: string}> => {
   try {
-    const user = auth.currentUser;
-    if (!user) {
+    if (!auth.currentUser) {
       return { success: false, error: 'User must be authenticated' };
     }
-
-    // 1. Check if food listing exists and has enough quantity
-    const foodDoc = await getDoc(doc(db, 'foodListings', foodListingId));
-    if (!foodDoc.exists()) {
-      return { success: false, error: 'Food listing not found' };
-    }
-
-    const foodData = foodDoc.data();
-    if (foodData.remainingQuantity < quantity) {
-      return { success: false, error: 'Not enough quantity available' };
-    }
-
-    // 2. Get current user data to include in reservation
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    let userName = 'Unknown User';
-    let userEmail = user.email || '';
-    let userPhone = '';
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data() as UserData;
-      userName = userData.profile?.name || userData.profile?.contactPerson || 'Unknown User';
-      userPhone = userData.profile?.phone || '';
-    }
-
-    // 3. Check if user has a cancelled reservation for this food listing
-    const existingReservationQuery = query(
-      collection(db, 'foodReservations'),
-      where('foodListingId', '==', foodListingId),
-      where('userId', '==', user.uid),
-      where('status', '==', 'cancelled')
-    );
     
-    const existingReservations = await getDocs(existingReservationQuery);
-    let reservationId: string;
-    let existingReservationData: any = null;
+    // Define the client call signature matching the CF payload (ReserveFoodRequest)
+    const reserveCF = httpsCallable<{ foodListingId: string, quantity: number, userType: 'receiver' | 'volunteer' }, 
+                                    { success: boolean; reservationId?: string; message?: string }>(
+      functions, 
+      'reserveFoodCF' 
+    );
 
-    if (!existingReservations.empty) {
-      // Use the existing cancelled reservation
-      const existingReservation = existingReservations.docs[0];
-      reservationId = existingReservation.id;
-      existingReservationData = existingReservation.data();
-      
-      // Update the existing reservation
-      await updateDoc(doc(db, 'foodReservations', reservationId), {
-        quantity,
-        status: 'confirmed',
-        updatedAt: new Date(),
-        // Update user data in case it changed
-        userName,
-        userEmail,
-        userPhone
-      });
+    const result = await reserveCF({ 
+      foodListingId, 
+      quantity,
+      userType
+    });
 
-      // Calculate quantity difference for food listing update
-      const oldQuantity = existingReservationData.quantity || 0;
-      const quantityDiff = quantity - oldQuantity;
-
-      // Update food listing quantities with the difference
-      // FIX: Both receivers and volunteers should only affect reservedQuantity
-      await updateDoc(doc(db, 'foodListings', foodListingId), {
-        remainingQuantity: foodData.remainingQuantity - quantityDiff,
-        reservedQuantity: (foodData.reservedQuantity || 0) + quantityDiff,
-        updatedAt: new Date()
-      });
-
-    } else {
-      // Create a new reservation record
-      const reservationData: Omit<FoodReservation, 'id'> = {
-        foodListingId,
-        userId: user.uid,
-        userType,
-        quantity,
-        status: 'confirmed',
-        reservedAt: new Date(),
-        updatedAt: new Date(),
-        userName,
-        userEmail,
-        userPhone
+    if (result.data.success) {
+      return { 
+        success: true, 
+        reservationId: result.data.reservationId 
       };
-
-      const reservationRef = await addDoc(collection(db, 'foodReservations'), reservationData);
-      reservationId = reservationRef.id;
-
-      // Update food listing quantities for new reservation
-      // FIX: Both receivers and volunteers should only affect reservedQuantity
-      await updateDoc(doc(db, 'foodListings', foodListingId), {
-        remainingQuantity: foodData.remainingQuantity - quantity,
-        reservedQuantity: (foodData.reservedQuantity || 0) + quantity,
-        updatedAt: new Date()
-      });
+    } else {
+      return { success: false, error: result.data.message || 'Failed to reserve food via server' };
     }
-
-    return { 
-      success: true, 
-      reservationId 
-    };
   } catch (error: any) {
     console.error('Error reserving food:', error);
+    // Handle Callable Function errors (e.g., resource-exhausted)
     return { 
       success: false, 
       error: error.message || 'Failed to reserve food' 
@@ -157,125 +85,29 @@ export const reserveFood = async (
   }
 };
 
-// Register for campaign (for receivers)
+// Register for campaign (for receivers) - MIGRATED TO CF
 export const registerForCampaign = async (
   campaignId: string
 ): Promise<{success: boolean; error?: string; registrationId?: string}> => {
   try {
-    const user = auth.currentUser;
-    if (!user) {
+    if (!auth.currentUser) {
       return { success: false, error: 'User must be authenticated' };
     }
-
-    // 1. Check if campaign exists and has available spots
-    const campaignDoc = await getDoc(doc(db, 'campaigns', campaignId));
-    if (!campaignDoc.exists()) {
-      return { success: false, error: 'Campaign not found' };
-    }
-
-    const campaignData = campaignDoc.data();
-    if (campaignData.availableSpots <= 0) {
-      return { success: false, error: 'No available spots left' };
-    }
-
-    // 2. Check if user has a cancelled registration for this campaign
-    const existingRegistrationQuery = query(
-      collection(db, 'campaignRegistrations'),
-      where('campaignId', '==', campaignId),
-      where('userId', '==', user.uid),
-      where('status', '==', 'cancelled')
-    );
     
-    const existingRegistrations = await getDocs(existingRegistrationQuery);
-    let registrationId: string;
+    // Define the client call signature matching the CF payload (RegisterCampaignRequest)
+    const registerCF = httpsCallable<{ campaignId: string }, { success: boolean; registrationId?: string; message?: string }>(
+      functions, 
+      'registerForCampaignCF' 
+    );
 
-    if (!existingRegistrations.empty) {
-      // Use the existing cancelled registration
-      const existingRegistration = existingRegistrations.docs[0];
-      registrationId = existingRegistration.id;
-      
-      // Get current user data to include in registration
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      let userName = 'Unknown User';
-      let userEmail = user.email || '';
-      let userPhone = '';
+    const result = await registerCF({ campaignId });
 
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as UserData;
-        userName = userData.profile?.name || userData.profile?.contactPerson || 'Unknown User';
-        userPhone = userData.profile?.phone || '';
-      }
-
-      // Update the existing registration
-      await updateDoc(doc(db, 'campaignRegistrations', registrationId), {
-        status: 'registered',
-        updatedAt: new Date(),
-        // Update user data in case it changed
-        userName,
-        userEmail,
-        userPhone
-      });
-
-      // Update campaign spots (reclaim the spot)
-      await updateDoc(doc(db, 'campaigns', campaignId), {
-        registeredSpots: (campaignData.registeredSpots || 0) + 1,
-        availableSpots: campaignData.availableSpots - 1,
-        updatedAt: new Date()
-      });
-
+    if (result.data.success) {
+      // Note: registrationId might not be returned, but the CF ensures consistency
+      return { success: true, registrationId: result.data.registrationId }; 
     } else {
-      // Check if user is already registered (non-cancelled)
-      const activeRegistrationQuery = query(
-        collection(db, 'campaignRegistrations'),
-        where('campaignId', '==', campaignId),
-        where('userId', '==', user.uid),
-        where('status', 'in', ['registered', 'attended'])
-      );
-      
-      const activeRegistrations = await getDocs(activeRegistrationQuery);
-      if (!activeRegistrations.empty) {
-        return { success: false, error: 'You are already registered for this campaign' };
-      }
-
-      // Get current user data to include in registration
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      let userName = 'Unknown User';
-      let userEmail = user.email || '';
-      let userPhone = '';
-
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as UserData;
-        userName = userData.profile?.name || userData.profile?.contactPerson || 'Unknown User';
-        userPhone = userData.profile?.phone || '';
-      }
-
-      // Create new registration record
-      const registrationData: Omit<CampaignRegistration, 'id'> = {
-        campaignId,
-        userId: user.uid,
-        status: 'registered',
-        registeredAt: new Date(),
-        updatedAt: new Date(),
-        userName,
-        userEmail,
-        userPhone
-      };
-
-      const registrationRef = await addDoc(collection(db, 'campaignRegistrations'), registrationData);
-      registrationId = registrationRef.id;
-
-      // Update campaign spots
-      await updateDoc(doc(db, 'campaigns', campaignId), {
-        registeredSpots: (campaignData.registeredSpots || 0) + 1,
-        availableSpots: campaignData.availableSpots - 1,
-        updatedAt: new Date()
-      });
+      return { success: false, error: result.data.message || 'Failed to register for campaign via server' };
     }
-
-    return { 
-      success: true, 
-      registrationId 
-    };
   } catch (error: any) {
     console.error('Error registering for campaign:', error);
     return { 
@@ -284,6 +116,134 @@ export const registerForCampaign = async (
     };
   }
 };
+
+// Mark food reservation as completed - MIGRATED TO CF
+export const completeFoodReservation = async (
+  reservationId: string
+): Promise<{success: boolean; error?: string}> => {
+  try {
+    if (!auth.currentUser) {
+      return { success: false, error: 'User must be authenticated' };
+    }
+    
+    // Define the client call signature matching the CF payload (CompleteReservationRequest)
+    const completeCF = httpsCallable<{ reservationId: string }, { success: boolean; message?: string }>(
+      functions, 
+      'completeFoodReservationCF' 
+    );
+
+    const result = await completeCF({ reservationId });
+
+    if (result.data.success) {
+      console.log(`✅ Reservation ${reservationId} marked as completed.`);
+      return { success: true };
+    } else {
+      return { success: false, error: result.data.message || 'Failed to complete reservation via server' };
+    }
+  } catch (error: any) {
+    console.error('Error completing food reservation:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to complete reservation' 
+    };
+  }
+};
+
+// Mark campaign registration as attended - MIGRATED TO CF
+export const completeCampaignRegistration = async (
+  registrationId: string
+): Promise<{success: boolean; error?: string}> => {
+  try {
+    if (!auth.currentUser) {
+      return { success: false, error: 'User must be authenticated' };
+    }
+
+    // Define the client call signature matching the CF payload (CompleteRegistrationRequest)
+    const completeCF = httpsCallable<{ registrationId: string }, { success: boolean; message?: string }>(
+      functions, 
+      'completeCampaignRegistrationCF' 
+    );
+
+    const result = await completeCF({ registrationId });
+
+    if (result.data.success) {
+      console.log(`✅ Registration ${registrationId} marked as attended`);
+      return { success: true };
+    } else {
+      return { success: false, error: result.data.message || 'Failed to complete registration via server' };
+    }
+  } catch (error: any) {
+    console.error('Error completing campaign registration:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to complete registration' 
+    };
+  }
+};
+
+// Cancel food reservation - MIGRATED TO CF
+export const cancelFoodReservation = async (
+  reservationId: string
+): Promise<{success: boolean; error?: string}> => {
+  try {
+    if (!auth.currentUser) {
+      return { success: false, error: 'User must be authenticated' };
+    }
+    
+    // Define the client call signature matching the CF payload (CancelReservationRequest)
+    const cancelCF = httpsCallable<{ reservationId: string }, { success: boolean; message?: string }>(
+      functions, 
+      'cancelFoodReservationCF' 
+    );
+
+    const result = await cancelCF({ reservationId });
+
+    if (result.data.success) {
+      return { success: true };
+    } else {
+      return { success: false, error: result.data.message || 'Failed to cancel reservation via server' };
+    }
+  } catch (error: any) {
+    console.error('Error cancelling food reservation:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to cancel reservation' 
+    };
+  }
+};
+
+// Cancel campaign registration - MIGRATED TO CF
+export const cancelCampaignRegistration = async (
+  registrationId: string
+): Promise<{success: boolean; error?: string}> => {
+  try {
+    if (!auth.currentUser) {
+      return { success: false, error: 'User must be authenticated' };
+    }
+
+    // Define the client call signature matching the CF payload (CancelRegistrationRequest)
+    const cancelCF = httpsCallable<{ registrationId: string }, { success: boolean; message?: string }>(
+      functions, 
+      'cancelCampaignRegistrationCF' 
+    );
+
+    const result = await cancelCF({ registrationId });
+
+    if (result.data.success) {
+      return { success: true };
+    } else {
+      return { success: false, error: result.data.message || 'Failed to cancel registration via server' };
+    }
+  } catch (error: any) {
+    console.error('Error cancelling campaign registration:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to cancel registration' 
+    };
+  }
+};
+
+// --- CLIENT-SIDE READ FUNCTIONS (Retained) ---
 
 // Get user's food reservations
 export const getUserFoodReservations = async (): Promise<{success: boolean; data?: FoodReservation[]; error?: string}> => {
@@ -390,7 +350,7 @@ export const getFoodReservationsByListing = async (
   }
 };
 
-// Get campaign registrations for a specific campaign (NO LONGER NEEDS USER DATA FETCH)
+// Get campaign registrations for a specific campaign
 export const getCampaignRegistrationsByCampaign = async (
   campaignId: string
 ): Promise<{success: boolean; data?: CampaignRegistration[]; error?: string}> => {
@@ -419,239 +379,6 @@ export const getCampaignRegistrationsByCampaign = async (
     return { 
       success: false, 
       error: error.message || 'Failed to fetch registrations' 
-    };
-  }
-};
-
-// Mark food reservation as completed
-export const completeFoodReservation = async (
-  reservationId: string
-): Promise<{success: boolean; error?: string}> => {
-  try {
-    const user = auth.currentUser;
-    if (!user) {
-      return { success: false, error: 'User must be authenticated' };
-    }
-
-    // 1. Get the reservation data
-    const reservationDoc = await getDoc(doc(db, 'foodReservations', reservationId));
-    if (!reservationDoc.exists()) {
-      return { success: false, error: 'Reservation not found' };
-    }
-
-    const reservationData = reservationDoc.data();
-    
-    // 2. Check if user is the donor of this food listing
-    const foodListingDoc = await getDoc(doc(db, 'foodListings', reservationData.foodListingId));
-    if (!foodListingDoc.exists()) {
-      return { success: false, error: 'Food listing not found' };
-    }
-
-    const foodListingData = foodListingDoc.data();
-    
-    if (foodListingData.donorId !== user.uid) {
-      return { success: false, error: 'Only the donor can mark reservations as completed' };
-    }
-
-    // 3. Check if reservation is already completed
-    if (reservationData.status === 'completed') {
-      return { success: false, error: 'Reservation is already completed' };
-    }
-
-    // 4. Update reservation status to completed
-    await updateDoc(doc(db, 'foodReservations', reservationId), {
-      status: 'completed',
-      updatedAt: serverTimestamp()
-    });
-
-    // 5. Update food listing collected quantity (ACTUAL COLLECTION)
-    const collectedQuantity = reservationData.quantity;
-    
-    await updateDoc(doc(db, 'foodListings', reservationData.foodListingId), {
-      collectedQuantity: (foodListingData.collectedQuantity || 0) + collectedQuantity,
-      updatedAt: new Date()
-    });
-
-    console.log(`✅ Reservation ${reservationId} marked as completed. Collected: ${collectedQuantity}`);
-
-    return { success: true };
-  } catch (error: any) {
-    console.error('Error completing food reservation:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to complete reservation' 
-    };
-  }
-};
-
-// Mark campaign registration as attended
-export const completeCampaignRegistration = async (
-  registrationId: string
-): Promise<{success: boolean; error?: string}> => {
-  try {
-    const user = auth.currentUser;
-    if (!user) {
-      return { success: false, error: 'User must be authenticated' };
-    }
-
-    // 1. Get the registration data
-    const registrationDoc = await getDoc(doc(db, 'campaignRegistrations', registrationId));
-    if (!registrationDoc.exists()) {
-      return { success: false, error: 'Registration not found' };
-    }
-
-    const registrationData = registrationDoc.data();
-    
-    // 2. Check if user is the organizer of this campaign
-    const campaignDoc = await getDoc(doc(db, 'campaigns', registrationData.campaignId));
-    if (!campaignDoc.exists()) {
-      return { success: false, error: 'Campaign not found' };
-    }
-
-    const campaignData = campaignDoc.data();
-    
-    if (campaignData.organizerId !== user.uid) {
-      return { success: false, error: 'Only the campaign organizer can mark registrations as attended' };
-    }
-
-    // 3. Check if registration is already attended
-    if (registrationData.status === 'attended') {
-      return { success: false, error: 'Registration is already marked as attended' };
-    }
-
-    // 4. Update registration status to attended
-    await updateDoc(doc(db, 'campaignRegistrations', registrationId), {
-      status: 'attended',
-      updatedAt: serverTimestamp()
-    });
-
-    // 5. Update campaign attended count
-    await updateDoc(doc(db, 'campaigns', registrationData.campaignId), {
-      attendedSpots: (campaignData.attendedSpots || 0) + 1,
-      updatedAt: new Date()
-    });
-
-    console.log(`✅ Registration ${registrationId} marked as attended`);
-
-    return { success: true };
-  } catch (error: any) {
-    console.error('Error completing campaign registration:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to complete registration' 
-    };
-  }
-};
-
-export const cancelFoodReservation = async (
-  reservationId: string
-): Promise<{success: boolean; error?: string}> => {
-  try {
-    const user = auth.currentUser;
-    if (!user) {
-      return { success: false, error: 'User must be authenticated' };
-    }
-
-    // 1. Get the reservation to check ownership and get food listing info
-    const reservationDoc = await getDoc(doc(db, 'foodReservations', reservationId));
-    if (!reservationDoc.exists()) {
-      return { success: false, error: 'Reservation not found' };
-    }
-
-    const reservationData = reservationDoc.data();
-    
-    // 2. Check if user owns this reservation
-    if (reservationData.userId !== user.uid) {
-      return { success: false, error: 'You can only cancel your own reservations' };
-    }
-
-    // 3. Check if reservation is already completed
-    if (reservationData.status === 'completed') {
-      return { success: false, error: 'Cannot cancel a completed reservation' };
-    }
-
-    // 4. Update reservation status to cancelled
-    await updateDoc(doc(db, 'foodReservations', reservationId), {
-      status: 'cancelled',
-      updatedAt: serverTimestamp()
-    });
-
-    // 5. Update food listing quantities - return the reserved quantity
-    // FIX: Both receivers and volunteers should only affect reservedQuantity
-    const foodDoc = await getDoc(doc(db, 'foodListings', reservationData.foodListingId));
-    if (foodDoc.exists()) {
-      const foodData = foodDoc.data();
-      const quantity = reservationData.quantity;
-      
-      await updateDoc(doc(db, 'foodListings', reservationData.foodListingId), {
-        remainingQuantity: foodData.remainingQuantity + quantity,
-        reservedQuantity: Math.max(0, (foodData.reservedQuantity || 0) - quantity),
-        updatedAt: new Date()
-      });
-    }
-
-    return { success: true };
-  } catch (error: any) {
-    console.error('Error cancelling food reservation:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to cancel reservation' 
-    };
-  }
-};
-
-// Cancel campaign registration
-export const cancelCampaignRegistration = async (
-  registrationId: string
-): Promise<{success: boolean; error?: string}> => {
-  try {
-    const user = auth.currentUser;
-    if (!user) {
-      return { success: false, error: 'User must be authenticated' };
-    }
-
-    // 1. Get the registration to check ownership and get campaign info
-    const registrationDoc = await getDoc(doc(db, 'campaignRegistrations', registrationId));
-    if (!registrationDoc.exists()) {
-      return { success: false, error: 'Registration not found' };
-    }
-
-    const registrationData = registrationDoc.data();
-    
-    // 2. Check if user owns this registration
-    if (registrationData.userId !== user.uid) {
-      return { success: false, error: 'You can only cancel your own registrations' };
-    }
-
-    // 3. Check if registration is already attended
-    if (registrationData.status === 'attended') {
-      return { success: false, error: 'Cannot cancel an attended registration' };
-    }
-
-    // 4. Update registration status to cancelled
-    await updateDoc(doc(db, 'campaignRegistrations', registrationId), {
-      status: 'cancelled',
-      updatedAt: serverTimestamp()
-    });
-
-    // 5. Update campaign spots - return the spot
-    const campaignDoc = await getDoc(doc(db, 'campaigns', registrationData.campaignId));
-    if (campaignDoc.exists()) {
-      const campaignData = campaignDoc.data();
-      
-      await updateDoc(doc(db, 'campaigns', registrationData.campaignId), {
-        registeredSpots: Math.max(0, (campaignData.registeredSpots || 0) - 1),
-        availableSpots: (campaignData.availableSpots || 0) + 1,
-        updatedAt: new Date()
-      });
-    }
-
-    return { success: true };
-  } catch (error: any) {
-    console.error('Error cancelling campaign registration:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to cancel registration' 
     };
   }
 };

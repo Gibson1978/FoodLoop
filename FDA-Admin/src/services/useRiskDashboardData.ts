@@ -108,7 +108,7 @@ export const useRiskDashboardData = () => {
                     topRiskCandidates.push({
                         id: doc.id,
                         name: data.profile?.orgName || data.profile?.name || data.profile?.contactPerson || 'Unknown User',
-                        role: data.role,
+                        role: data.role || 'unknown',
                         status: status as UserRiskData['status'],
                         riskScore: score,
                         suspensionReason: suspensionReason,

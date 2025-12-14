@@ -30,29 +30,32 @@ interface Message {
   pdfFilename?: string;
 }
 
+// **Move the initialWelcomeMessage outside the component or use a useMemo/useCallback if it were complex, but defining it once for stability is key.**
+const initialWelcomeMessage: Message = {
+  id: "1",
+  type: "bot",
+  content: "🤖 Hello! I'm NoursihNowAI - Your Food Redistribution Platform Assistant\n\nI'm here to help you analyze platform data, generate insights, and optimize your food redistribution operations. I can assist with:\n\n• Donation Analytics - Trends, patterns, and optimization\n• NGO Performance - Partner efficiency and engagement  \n• User Metrics - Growth, activity, and retention\n• Report Generation - Custom insights and recommendations\n• Platform Optimization - Efficiency improvements\n\nWhat would you like to explore today?",
+  timestamp: new Date(),
+  suggestions: [
+    "Show platform overview and impact metrics",
+    "How many users are at high risk or pending approval?",
+    "Analyze collection efficiency and slow donors",
+    "Generate comprehensive impact report"
+  ]
+};
+
 export function ChatbotTab() {
   const SESSION_KEY = "foodAI_chat_history";
 
-  const initialWelcomeMessage: Message = {
-    id: "1",
-    type: "bot",
-    content: "🤖 **Hello! I'm FoodAI - Your Food Redistribution Platform Assistant**\n\nI'm here to help you analyze platform data, generate insights, and optimize your food redistribution operations. I can assist with:\n\n• **Donation Analytics** - Trends, patterns, and optimization\n• **NGO Performance** - Partner efficiency and engagement  \n• **User Metrics** - Growth, activity, and retention\n• **Report Generation** - Custom insights and recommendations\n• **Platform Optimization** - Efficiency improvements\n\nWhat would you like to explore today?",
-    timestamp: new Date(),
-    suggestions: [
-      "Show platform overview and impact metrics",
-      "How many users are at high risk or pending approval?",
-      "Analyze collection efficiency and slow donors",
-      "Generate comprehensive impact report"
-    ]
-  };
-
+  // Re-define the initial load logic to reference the external constant
   const loadInitialState = (): Message[] => {
     const savedHistory = sessionStorage.getItem(SESSION_KEY);
     if (savedHistory) {
       const messages = JSON.parse(savedHistory) as Message[];
       return messages.map(msg => ({ ...msg, timestamp: new Date(msg.timestamp) }));
     }
-    return [initialWelcomeMessage];
+    // Use the constant initial message
+    return [initialWelcomeMessage]; 
   };
 
   const [messages, setMessages] = useState<Message[]>(loadInitialState);
@@ -70,6 +73,7 @@ export function ChatbotTab() {
   }, [messages]);
 
   useEffect(() => {
+    // Initial scroll on mount to handle loaded history
     scrollToBottom();
   }, []);
 
@@ -98,6 +102,7 @@ export function ChatbotTab() {
       // Only generate PDF if the AI response includes a report
       if (aiResponse.report) {
         try {
+          // Assuming PDFService.generateReport returns { url: string, filename: string }
           const pdfResult = await PDFService.generateReport(aiResponse.report);
           pdfUrl = pdfResult.url;
           pdfFilename = pdfResult.filename;
@@ -112,7 +117,7 @@ export function ChatbotTab() {
         content: aiResponse.response,
         timestamp: new Date(),
         suggestions: aiResponse.suggestions,
-        // FIX: Use separate spread for explicit undefined clearing
+        // Use separate spread for explicit undefined clearing
         ...(pdfUrl ? { pdfUrl } : {}),
         ...(pdfFilename ? { pdfFilename } : {})
       };
@@ -126,7 +131,7 @@ export function ChatbotTab() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "bot",
-        content: "❌ **I encountered an error processing your request**\n\nPlease try again in a moment, or check the dashboard for real-time metrics.",
+        content: "❌ I encountered an error processing your request\n\nPlease try again in a moment, or check the dashboard for real-time metrics.",
         timestamp: new Date(),
         suggestions: ["Try again", "Check dashboard", "Contact support"]
       };
@@ -148,24 +153,17 @@ export function ChatbotTab() {
     }
   };
 
+  // ------------------------------------------------------------------
+  // **MODIFICATION HERE**
+  // ------------------------------------------------------------------
   const clearConversation = () => {
     aiService.clearHistory();
     sessionStorage.removeItem(SESSION_KEY);
-    setMessages([
-      {
-        id: "1",
-        type: "bot",
-        content: "🔄 **Conversation Reset**\n\nI've cleared our conversation history. How can I help you with your food redistribution platform analytics today?",
-        timestamp: new Date(),
-        suggestions: [
-          "Show platform overview and impact metrics",
-          "How many users are at high risk or pending approval?",
-          "Analyze collection efficiency and slow donors",
-          "Generate comprehensive impact report"
-        ]
-      }
-    ]);
+    // Instead of a custom "Conversation Reset" message,
+    // set the messages state back to the initial welcome message.
+    setMessages([initialWelcomeMessage]); 
   };
+  // ------------------------------------------------------------------
 
   const handlePdfDownload = (url: string, filename: string) => {
     const link = document.createElement('a');
@@ -174,13 +172,12 @@ export function ChatbotTab() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   return (
     <div className="h-full flex flex-col">
-      <Card className="flex-1 shadow-sm border-0 bg-white flex flex-col">
-        <CardHeader className="border-b">
+      <Card className="flex-1 shadow-sm border-0 bg-white flex flex-col h-full">
+        <CardHeader className="border-b flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Bot className="h-5 w-5 text-primary" />
@@ -201,8 +198,9 @@ export function ChatbotTab() {
           </CardDescription>
         </CardHeader>
         
-        <CardContent className="flex-1 flex flex-col p-0">
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 h-[70vh]">
+        <CardContent className="flex-1 flex flex-col p-0 min-h-0">
+          {/* MAIN CHANGE: Fixed height chat window with scroll */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0" style={{ maxHeight: 'calc(100vh - 300px)' }}>
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -225,7 +223,6 @@ export function ChatbotTab() {
                     >
                       <div className="whitespace-pre-wrap text-sm">{message.content}</div>
                       
-                      {/* Only show PDF section if this specific message has PDF data */}
                       {message.pdfUrl && message.pdfFilename && (
                         <div className="mt-3 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
                           <div className="flex items-center justify-between mb-2">
@@ -307,7 +304,8 @@ export function ChatbotTab() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="border-t p-4">
+          {/* Fixed height input area - stays at bottom */}
+          <div className="border-t p-4 flex-shrink-0 bg-white">
             <div className="flex gap-2">
               <Input
                 value={inputValue}
